@@ -1,0 +1,55 @@
+# ============================
+# Node / NPM
+# ============================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json
+yarn.lock
+
+# ============================
+# Environment variables
+# ============================
+.env
+.env.*
+!.env.example
+
+# ============================
+# Logs
+# ============================
+logs/
+*.log
+logs/**/*.log
+
+# ============================
+# Build & Cache
+# ============================
+dist/
+build/
+.cache/
+.cache-loader/
+.temp/
+.tmp/
+
+# ============================
+# IDE / Editor
+# ============================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ============================
+# Operating System
+# ============================
+.DS_Store
+Thumbs.db
+
+# ============================
+# Docker
+# ============================
+docker-data/
+*.pid
+*.seed

@@ -1,0 +1,12 @@
+services:
+  api:
+    build: .
+    container_name: invitapop-api
+    ports:
+      - "4000:4000"
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: npm run dev
