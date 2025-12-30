@@ -202,10 +202,38 @@ async function deleteEventQuestion(req, res, next) {
   }
 }
 
+
+
+// GET /public/:id  -> where :id = event_id
+async function getPublicEventQuestionsByEventId(req, res, next) {
+  try {
+    const eventId = req.params.id;
+
+    if (!eventId) {
+      return res.status(400).json({ error: "event_id is required" });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("questions")
+      .select("*")
+      .eq("event_id", eventId)
+      .order("sort_order", { ascending: true });
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    return res.json({ questions: data || [] });
+  } catch (err) {
+    next(err);
+  }
+}
+
+
+
 module.exports = {
   listEventQuestions,
   getEventQuestion,
   createEventQuestion,
   patchEventQuestion,
   deleteEventQuestion,
+  getPublicEventQuestionsByEventId
 };

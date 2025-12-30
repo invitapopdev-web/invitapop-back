@@ -6,14 +6,19 @@ const {
   getEventQuestion,
   createEventQuestion,
   patchEventQuestion,
-  deleteEventQuestion,
+  deleteEventQuestion, 
+  getPublicEventQuestionsByEventId
 } = require("../controllers/eventQuestionsController");
 
 const router = express.Router();
+router.get("/public/:id", getPublicEventQuestionsByEventId);
+
+
 
 router.use(requireAuth);
 
 // GET /api/questions?event_id=UUID
+
 router.get("/", listEventQuestions);
 
 // GET /api/questions/:id

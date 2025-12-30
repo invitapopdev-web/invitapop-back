@@ -87,7 +87,7 @@ async function getEventPublic(req, res, next) {
       .from("events")
       .select(PUBLIC_FIELDS.join(","))
       .eq("id", id)
-      .eq("status", "published")
+      .eq("status", "draft")
       .maybeSingle();
 
     if (error) return res.status(500).json({ error: error.message });
