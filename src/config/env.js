@@ -15,7 +15,7 @@ const env = {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean),
-
+  FRONTEND_PUBLIC_URL: required("FRONTEND_PUBLIC_URL"),
   SUPABASE_URL: required("SUPABASE_URL"),
   SUPABASE_ANON_KEY: required("SUPABASE_ANON_KEY"),
   SUPABASE_SERVICE_ROLE_KEY: required("SUPABASE_SERVICE_ROLE_KEY"),
