@@ -2,19 +2,32 @@ const express = require("express");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const { env } = require("./config/env");
+
 const authRoutes = require("./routes/authRoutes");
 const templateRoutes = require("./routes/templatesRoutes");
 const eventRoutes = require("./routes/eventRoutes");
 const templateImagesRoutes = require("./routes/templateImagesRoutes");
 const eventQuestionsRoutes = require("./routes/eventQuestionsRoutes");
+
 const app = express();
 
-app.use(
-  cors({
-    origin: env.FRONTEND_ORIGIN, // ej: http://localhost:3000
-    credentials: true,
-  })
-);
+const corsOptions = {
+  origin: (origin, cb) => {
+    // healthchecks/curl no envían Origin
+    if (!origin) return cb(null, true);
+
+    if (env.FRONTEND_ORIGINS.includes(origin)) return cb(null, true);
+
+    return cb(new Error(`CORS blocked for origin: ${origin}`));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  optionsSuccessStatus: 204,
+};
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions)); // ✅ crucial
 
 app.use(express.json());
 app.use(cookieParser());
@@ -27,13 +40,16 @@ app.use("/api/auth", authRoutes);
 app.use("/api/templates", templateRoutes);
 app.use("/api/events", eventRoutes);
 app.use("/api/templates", templateImagesRoutes);
-
 app.use("/api/event-questions", eventQuestionsRoutes);
-
 
 app.use((err, req, res, next) => {
   console.error(err);
   if (res.headersSent) return next(err);
+
+  if (String(err.message || "").startsWith("CORS blocked")) {
+    return res.status(403).json({ error: err.message });
+  }
+
   res.status(500).json({ error: "Internal server error" });
 });
 
