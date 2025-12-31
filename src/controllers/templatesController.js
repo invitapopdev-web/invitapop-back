@@ -1,7 +1,7 @@
 // controllers/templatesController.js
 const { supabaseAdmin } = require("../config/supabaseClient");
 
-// ---------- Utils ----------
+
 function isPlainObject(v) {
   return v !== null && typeof v === "object" && !Array.isArray(v);
 }
