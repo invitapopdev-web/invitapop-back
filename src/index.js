@@ -18,7 +18,7 @@ const corsOptions = {
 
     if (env.FRONTEND_ORIGINS.includes(origin)) return cb(null, true);
 
-    return cb(new Error(`CORS blocked for origin: ${origin}`));
+    return cb(new Error(`CORS blocked for origin: ${origin} de ${env.FRONTEND_ORIGINS}`));
   },
   credentials: true,
   methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
