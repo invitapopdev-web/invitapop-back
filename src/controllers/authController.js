@@ -81,12 +81,14 @@ async function login(req, res, next) {
       httpOnly: true,
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       secure: process.env.NODE_ENV === "production",
-      maxAge: 60 * 60 * 1000, 
+      path: "/",
+      maxAge: 60 * 60 * 1000,
     });
+
 
     res.json({
       user: data.user,
-     
+
       // access_token: accessToken,
       // refresh_token: refreshToken,
     });
@@ -105,7 +107,7 @@ async function me(req, res, next) {
 
     const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
-      .select("*, roles(*)")   
+      .select("*, roles(*)")
       .eq("id", user.id)
       .maybeSingle();
 
@@ -132,7 +134,8 @@ async function forgotPassword(req, res, next) {
       return res.status(400).json({ error: "Email is required" });
     }
 
-    const redirectTo = `${env.FRONTEND_ORIGIN}/reset-password`;
+    const redirectTo = `${env.FRONTEND_PUBLIC_URL}/reset-password`;
+
 
     const { data, error } = await supabaseAdmin.auth.resetPasswordForEmail(
       email,
@@ -198,21 +201,19 @@ async function resetPassword(req, res, next) {
 
 async function logout(req, res, next) {
   try {
-    // Borra la cookie donde guardaste el access_token
     res.clearCookie("access_token", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      path: "/",
     });
-
-    // Opcional: si quieres invalidar el refresh token de Supabase, puedes hacerlo así:
-    // await supabaseAdmin.auth.signOut();
 
     return res.json({ message: "Sesión cerrada correctamente." });
   } catch (err) {
     next(err);
   }
 }
+
 
 
 module.exports = {
