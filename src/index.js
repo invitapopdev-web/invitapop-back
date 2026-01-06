@@ -8,6 +8,11 @@ const templateRoutes = require("./routes/templatesRoutes");
 const eventRoutes = require("./routes/eventRoutes");
 const templateImagesRoutes = require("./routes/templateImagesRoutes");
 const eventQuestionsRoutes = require("./routes/eventQuestionsRoutes");
+const rsvpRoutes = require("./routes/rsvpRoutes");
+const templateCategoriesRoutes = require("./routes/templateCategoriesRoutes");
+const categoriesRoutes = require("./routes/categoriesRoutes");
+
+
 
 const app = express();
 
@@ -41,6 +46,10 @@ app.use("/api/templates", templateRoutes);
 app.use("/api/events", eventRoutes);
 app.use("/api/templates", templateImagesRoutes);
 app.use("/api/event-questions", eventQuestionsRoutes);
+app.use("/api/template-categories", templateCategoriesRoutes);
+app.use("/api/categories", categoriesRoutes);
+
+app.use("/api", rsvpRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);
