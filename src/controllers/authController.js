@@ -78,12 +78,13 @@ async function login(req, res, next) {
     }
 
     res.cookie("access_token", accessToken, {
-      httpOnly: true,
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-      maxAge: 60 * 60 * 1000,
-    });
+  httpOnly: true,
+  secure: true,
+  sameSite: "none",
+  domain: ".invitapop.com",
+  path: "/",
+  maxAge: 60 * 60 * 1000,
+});
 
 
     res.json({
