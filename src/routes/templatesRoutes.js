@@ -8,6 +8,7 @@ const templates = require("../controllers/templatesController");
 // Ejemplo típico: const { requireAuth } = require("../middlewares/authMiddleware");
 const { requireAuth } = require("../middlewares/requireAuth");
 
+router.get("/public", templates.listPublicTemplates);
 
 router.use(requireAuth);
 

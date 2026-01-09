@@ -258,10 +258,29 @@ async function deleteTemplate(req, res, next) {
   }
 }
 
+
+// GET /api/templates/public
+async function listPublicTemplates(req, res, next) {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("templates")
+      .select("id, created_at, name, slug, thumbnail_url")
+      .eq("is_active", true)
+      .order("created_at", { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ templates: data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+
 module.exports = {
   listTemplates,
   getTemplate,
   createTemplate,
   patchTemplate,
   deleteTemplate,
+  listPublicTemplates
 };
