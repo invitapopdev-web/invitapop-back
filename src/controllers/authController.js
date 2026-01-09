@@ -78,13 +78,13 @@ async function login(req, res, next) {
     }
 
     res.cookie("access_token", accessToken, {
-  httpOnly: true,
-  secure: true,
-  sameSite: "none",
-  domain: ".invitapop.com",
-  path: "/",
-  maxAge: 60 * 60 * 1000,
-});
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+      domain: ".invitapop.com",
+      path: "/",
+      maxAge: 60 * 60 * 1000,
+    });
 
 
     res.json({
@@ -204,10 +204,12 @@ async function logout(req, res, next) {
   try {
     res.clearCookie("access_token", {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      secure: true,
+      sameSite: "none",
+      domain: ".invitapop.com",
       path: "/",
     });
+
 
     return res.json({ message: "Sesión cerrada correctamente." });
   } catch (err) {
