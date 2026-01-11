@@ -1,7 +1,7 @@
 const { supabaseAdmin } = require("../config/supabaseClient");
 const { env } = require("../config/env");
 
-
+const isProduction = process.env.NODE_ENV === "production";
 async function register(req, res, next) {
   try {
     const { email, password, fullName } = req.body;
@@ -79,9 +79,9 @@ async function login(req, res, next) {
 
     res.cookie("access_token", accessToken, {
       httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      domain: ".invitapop.com",
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
+      domain: isProduction ? ".invitapop.com" : undefined,
       path: "/",
       maxAge: 60 * 60 * 1000,
     });
@@ -204,9 +204,9 @@ async function logout(req, res, next) {
   try {
     res.clearCookie("access_token", {
       httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      domain: ".invitapop.com",
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
+      domain: isProduction ? ".invitapop.com" : undefined,
       path: "/",
     });
 
