@@ -77,15 +77,22 @@ async function login(req, res, next) {
         .json({ error: "No access token returned from Supabase" });
     }
 
+    // res.cookie("access_token", accessToken, {
+    //   httpOnly: true,
+    //   secure: isProduction,
+    //   sameSite: isProduction ? "none" : "lax",
+    //   domain: isProduction ? ".invitapop.com" : undefined,
+    //   path: "/",
+    //   maxAge: 60 * 60 * 1000,
+    // });
+
     res.cookie("access_token", accessToken, {
       httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? "none" : "lax",
-      domain: isProduction ? ".invitapop.com" : undefined,
-      path: "/",
+      secure: true,        // en https SI o SI
+      sameSite: "none",    // 👈 obligatorio para cross-site (Vercel ↔ Railway)
+      // domain: ".vercel.app", // NO. (no puedes setear para vercel.app)
       maxAge: 60 * 60 * 1000,
     });
-
 
     res.json({
       user: data.user,
@@ -202,12 +209,17 @@ async function resetPassword(req, res, next) {
 
 async function logout(req, res, next) {
   try {
+    // res.clearCookie("access_token", {
+    //   httpOnly: true,
+    //   secure: isProduction,
+    //   sameSite: isProduction ? "none" : "lax",
+    //   domain: isProduction ? ".invitapop.com" : undefined,
+    //   path: "/",
+    // });
     res.clearCookie("access_token", {
       httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? "none" : "lax",
-      domain: isProduction ? ".invitapop.com" : undefined,
-      path: "/",
+      secure: true,
+      sameSite: "none",
     });
 
 
