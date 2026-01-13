@@ -93,6 +93,7 @@ async function login(req, res, next) {
       // domain: ".vercel.app", // NO. (no puedes setear para vercel.app)
       maxAge: 60 * 60 * 1000,
     });
+    
 
     res.json({
       user: data.user,
