@@ -8,6 +8,7 @@ const {
   createEvent,
   patchEvent,
   deleteEvent,
+  exportGuests
 } = require("../controllers/eventsController");
 
 const router = express.Router();
@@ -28,5 +29,6 @@ router.get("/:id", getEventPrivate);
 router.post("/", createEvent);
 router.patch("/:id", patchEvent);
 router.delete("/:id", deleteEvent);
+router.get("/:id/export", exportGuests); 
 
 module.exports = router;
