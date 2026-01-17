@@ -264,7 +264,7 @@ async function listPublicTemplates(req, res, next) {
   try {
     const { data, error } = await supabaseAdmin
       .from("templates")
-      .select("id, created_at, name, slug, thumbnail_url")
+      .select("id, created_at, name, slug, thumbnail_url, design_json")
       .eq("is_active", true)
       .order("created_at", { ascending: false });
 
@@ -275,6 +275,26 @@ async function listPublicTemplates(req, res, next) {
   }
 }
 
+// GET /api/templates/public/:id
+async function getPublicTemplate(req, res, next) {
+  try {
+    const { id } = req.params;
+
+    const { data, error } = await supabaseAdmin
+      .from("templates")
+      .select("id, created_at, name, slug, thumbnail_url, design_json, is_active")
+      .eq("id", id)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (error) return res.status(500).json({ error: error.message });
+    if (!data) return res.status(404).json({ error: "Template not found" });
+
+    return res.json({ template: data });
+  } catch (err) {
+    next(err);
+  }
+}
 
 module.exports = {
   listTemplates,
@@ -282,5 +302,6 @@ module.exports = {
   createTemplate,
   patchTemplate,
   deleteTemplate,
-  listPublicTemplates
+  listPublicTemplates,
+  getPublicTemplate
 };

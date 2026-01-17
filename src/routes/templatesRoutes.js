@@ -9,6 +9,7 @@ const templates = require("../controllers/templatesController");
 const { requireAuth } = require("../middlewares/requireAuth");
 
 router.get("/public", templates.listPublicTemplates);
+router.get("/public/:id", templates.getPublicTemplate);
 
 router.use(requireAuth);
 
