@@ -11,6 +11,8 @@ const eventQuestionsRoutes = require("./routes/eventQuestionsRoutes");
 const rsvpRoutes = require("./routes/rsvpRoutes");
 const templateCategoriesRoutes = require("./routes/templateCategoriesRoutes");
 const categoriesRoutes = require("./routes/categoriesRoutes");
+const invitationBalancesRoutes = require("./routes/invitationBalancesRoutes");
+const stripeRoutes = require("./routes/stripeRoutes");
 
 const app = express();
 
@@ -73,6 +75,8 @@ app.use("/api/event-questions", eventQuestionsRoutes);
 app.use("/api/template-categories", templateCategoriesRoutes);
 app.use("/api/categories", categoriesRoutes);
 app.use("/api", rsvpRoutes);
+app.use("/api/invitation-balances", invitationBalancesRoutes);
+app.use("/api/stripe", stripeRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);
