@@ -18,6 +18,7 @@ const ALLOWED_FIELDS = [
   "notes",
   "design_json",
   "max_guests",
+  "invitation_type",
 ];
 
 
@@ -32,6 +33,7 @@ const PUBLIC_FIELDS = [
   "status",
   "design_json",
   "max_guests",
+  "invitation_type",
 ];
 
 
