@@ -150,7 +150,7 @@ async function patchEvent(req, res, next) {
       if (eventErr) return res.status(500).json({ error: eventErr.message });
 
       const guestsNeeded = event.max_guests || 0;
-      const productType = event.invitation_type || "standard";
+      const productType = (event.invitation_type || "standard").split(":")[0];
 
       const { data: balance, error: balanceErr } = await supabaseAdmin
         .from("invitation_balances")

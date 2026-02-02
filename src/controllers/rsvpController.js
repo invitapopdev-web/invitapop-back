@@ -239,7 +239,7 @@ async function postPublicRsvp(req, res, next) {
     // Increment total_used in invitation_balances
     const attendingCount = createdGuests.filter((g) => g.attending).length;
     if (attendingCount > 0) {
-      const productType = event.invitation_type || "standard";
+      const productType = (event.invitation_type || "standard").split(":")[0];
 
       const { data: balance, error: balErr } = await supabaseAdmin
         .from("invitation_balances")
