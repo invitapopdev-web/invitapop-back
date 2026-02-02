@@ -151,7 +151,7 @@ async function postPublicRsvp(req, res, next) {
     // Evento existe (no owner)
     const { data: event, error: eventErr } = await supabaseAdmin
       .from("events")
-      .select("id")
+      .select("id, user_id, invitation_type")
       .eq("id", eventId)
       .maybeSingle();
 
@@ -193,7 +193,7 @@ async function postPublicRsvp(req, res, next) {
         email: g.email || null,
         phone: g.phone || null,
         attending: !!g.attending,
-      
+
       };
     });
 
@@ -234,6 +234,29 @@ async function postPublicRsvp(req, res, next) {
 
       if (upErr) return res.status(500).json({ error: upErr.message });
       upsertedAnswers = upData || [];
+    }
+
+    // Increment total_used in invitation_balances
+    const attendingCount = createdGuests.filter((g) => g.attending).length;
+    if (attendingCount > 0) {
+      const productType = event.invitation_type || "standard";
+
+      const { data: balance, error: balErr } = await supabaseAdmin
+        .from("invitation_balances")
+        .select("id, total_used")
+        .eq("user_id", event.user_id)
+        .eq("product_type", productType)
+        .maybeSingle();
+
+      if (!balErr && balance) {
+        await supabaseAdmin
+          .from("invitation_balances")
+          .update({
+            total_used: (balance.total_used || 0) + attendingCount,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", balance.id);
+      }
     }
 
     return res.status(201).json({
@@ -319,14 +342,14 @@ async function patchPrivateGuest(req, res, next) {
     if (gErr) return res.status(500).json({ error: gErr.message });
     if (!guest) return res.status(404).json({ error: "Guest not found" });
 
-    const { full_name, email, phone, attending,  answers } = req.body || {};
+    const { full_name, email, phone, attending, answers } = req.body || {};
     const patch = {};
 
     if (full_name !== undefined) patch.full_name = full_name;
     if (email !== undefined) patch.email = email || null;
     if (phone !== undefined) patch.phone = phone || null;
     if (attending !== undefined) patch.attending = !!attending;
-   
+
 
     let updatedGuest = guest;
 

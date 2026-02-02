@@ -139,14 +139,50 @@ async function patchEvent(req, res, next) {
     const body = req.body || {};
     const patch = pick(body, ALLOWED_FIELDS);
 
-    if (Object.keys(patch).length === 0) {
+    // Si intenta publicar, verificar saldo
+    if (body.status === "published") {
+      const { data: event, error: eventErr } = await supabaseAdmin
+        .from("events")
+        .select("max_guests, invitation_type")
+        .eq("id", id)
+        .single();
+
+      if (eventErr) return res.status(500).json({ error: eventErr.message });
+
+      const guestsNeeded = event.max_guests || 0;
+      const productType = event.invitation_type || "standard";
+
+      const { data: balance, error: balanceErr } = await supabaseAdmin
+        .from("invitation_balances")
+        .select("total_purchased, total_used")
+        .eq("user_id", userId)
+        .eq("product_type", productType)
+        .maybeSingle();
+
+      if (balanceErr) return res.status(500).json({ error: balanceErr.message });
+
+      const totalPurchased = balance?.total_purchased || 0;
+      const totalUsed = balance?.total_used || 0;
+      const available = totalPurchased - totalUsed;
+
+      if (available < guestsNeeded) {
+        return res.status(403).json({
+          error: "Saldo de invitaciones insuficiente",
+          needed: guestsNeeded,
+          available: available
+        });
+      }
+
+      patch.status = "published";
+    }
+
+    if (Object.keys(patch).length === 0 && !body.status) {
       return res.status(400).json({ error: "No fields to update" });
     }
 
-    // si tienes updated_at en tabla, esto ayuda
     patch.updated_at = new Date().toISOString();
 
-    const { data, error } = await supabaseAdmin
+    const { data: data, error: error } = await supabaseAdmin
       .from("events")
       .update(patch)
       .eq("id", id)
