@@ -21,6 +21,7 @@ const env = {
   SUPABASE_SERVICE_ROLE_KEY: required("SUPABASE_SERVICE_ROLE_KEY"),
   STRIPE_PUBLIC_KEY: process.env.STRIPE_PUBLIC_KEY,
   STRIPE_SECRET_KEY: required("STRIPE_SECRET_KEY"),
+  STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
 };
 
 module.exports = { env };
