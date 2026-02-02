@@ -56,7 +56,7 @@ const createCheckoutSession = async (req, res) => {
                 },
             ],
             mode: "payment",
-            success_url: `${env.FRONTEND_PUBLIC_URL}/dashboard/events/edit/${req.body.eventId}?step=5&payment=success`,
+            success_url: `${env.FRONTEND_PUBLIC_URL}/dashboard/events/${req.body.eventId}?payment=success`,
             cancel_url: `${env.FRONTEND_PUBLIC_URL}/dashboard/events/edit/${req.body.eventId}?step=5&payment=cancel`,
             metadata: {
                 userId: userId,
