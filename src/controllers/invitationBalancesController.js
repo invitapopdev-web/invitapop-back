@@ -1,6 +1,8 @@
 // src/controllers/invitationBalancesController.js
 const { supabaseAdmin } = require("../config/supabaseClient");
 
+const { getEventUsageMetrics, getUserConfirmedRSVPs } = require("./eventsController");
+
 function toInt(n) {
   const x = Number(n);
   return Number.isFinite(x) ? Math.trunc(x) : 0;
@@ -11,7 +13,7 @@ async function getMyInvitationBalances(req, res, next) {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ error: "No autenticado" });
 
-    const { data, error } = await supabaseAdmin
+    const { data: bankBalances, error } = await supabaseAdmin
       .from("invitation_balances")
       .select("product_type, total_purchased, total_used, updated_at")
       .eq("user_id", userId)
@@ -19,21 +21,28 @@ async function getMyInvitationBalances(req, res, next) {
 
     if (error) return res.status(500).json({ error: error.message });
 
-    const balances = (data || []).map((row) => {
-      const totalPurchased = toInt(row.total_purchased);
-      const totalUsed = toInt(row.total_used);
-      const available = Math.max(0, totalPurchased - totalUsed);
+    // Enriquecer con reservas dinámicas
+    const enrichedBalances = await Promise.all((bankBalances || []).map(async (bal) => {
+      const { totalMaxGuests } = await getEventUsageMetrics(userId, bal.product_type);
+
+      const purchased = toInt(bal.total_purchased);
+      const usedRSVPs = toInt(bal.total_used); // Solo RSVPs confirmados
+      const reserved = totalMaxGuests; // Suma de max_guests de publicados
+
+      // Disponibles = Compradas - Reservadas
+      // (Asumiendo que las RSVPs confirmadas ocurren DENTRO de un evento publicado, 
+      // y si el evento se borra, las confirmadas siguen restando del banco).
+      // Pero para simplificar al usuario:
+      const available = Math.max(0, purchased - reserved);
 
       return {
-        product_type: row.product_type,
-        total_purchased: totalPurchased,
-        total_used: totalUsed,
-        available,
-        updated_at: row.updated_at,
+        ...bal,
+        total_reserved: reserved,
+        available: available
       };
-    });
+    }));
 
-    return res.json({ balances });
+    return res.json({ balances: enrichedBalances });
   } catch (err) {
     next(err);
   }

@@ -9,7 +9,6 @@ function pick(obj, allowed) {
   return out;
 }
 
-// Campos que permites editar por PATCH/POST (privado)
 const ALLOWED_FIELDS = [
   "title_text",
   "event_date",
@@ -22,7 +21,6 @@ const ALLOWED_FIELDS = [
 ];
 
 
-// Campos que expones públicamente (NO metas cosas privadas aquí)
 const PUBLIC_FIELDS = [
   "id",
   "title_text",
@@ -35,6 +33,57 @@ const PUBLIC_FIELDS = [
   "max_guests",
   "invitation_type",
 ];
+
+async function getUserConfirmedRSVPs(userId, productType) {
+  try {
+    // 1. Obtener IDs de todos los eventos del usuario de ese tipo
+    const { data: events, error: evErr } = await supabaseAdmin
+      .from("events")
+      .select("id")
+      .eq("user_id", userId)
+      .ilike("invitation_type", `${productType}%`);
+
+    if (evErr) throw evErr;
+    if (!events || events.length === 0) return 0;
+
+    const eventIds = events.map(e => e.id);
+
+    // 2. Contar invitados confirmados en esos eventos
+    const { count, error: countErr } = await supabaseAdmin
+      .from("guests")
+      .select("*", { count: "exact", head: true })
+      .in("event_id", eventIds)
+      .eq("attending", true);
+
+    if (countErr) throw countErr;
+    return count || 0;
+  } catch (err) {
+    console.error("Error counting user confirmed RSVPs:", err);
+    return 0;
+  }
+}
+
+async function getEventUsageMetrics(userId, productType) {
+  try {
+    // 1. Obtener todos los eventos publicados
+    const { data: events, error: eventsErr } = await supabaseAdmin
+      .from("events")
+      .select("id, max_guests")
+      .eq("user_id", userId)
+      .eq("status", "published")
+      .ilike("invitation_type", `${productType}%`);
+
+    if (eventsErr) throw eventsErr;
+
+    // 2. Sumar max_guests
+    const totalMaxGuests = (events || []).reduce((acc, ev) => acc + (Number(ev.max_guests) || 0), 0);
+
+    return { totalMaxGuests };
+  } catch (err) {
+    console.error("Error getting event usage metrics:", err);
+    return { totalMaxGuests: 0 };
+  }
+}
 
 
 async function listEvents(req, res, next) {
@@ -89,7 +138,7 @@ async function getEventPublic(req, res, next) {
       .from("events")
       .select(PUBLIC_FIELDS.join(","))
       .eq("id", id)
-      .eq("status", "draft")
+      .eq("status", "published")
       .maybeSingle();
 
     if (error) return res.status(500).json({ error: error.message });
@@ -139,41 +188,57 @@ async function patchEvent(req, res, next) {
     const body = req.body || {};
     const patch = pick(body, ALLOWED_FIELDS);
 
-    // Si intenta publicar, verificar saldo
-    if (body.status === "published") {
-      const { data: event, error: eventErr } = await supabaseAdmin
-        .from("events")
-        .select("max_guests, invitation_type")
-        .eq("id", id)
-        .single();
+    // Validar saldo de invitaciones (siempre, incluso para borradores, para evitar sobre-asignación)
+    const { data: currentEvent, error: eventErr } = await supabaseAdmin
+      .from("events")
+      .select("status, max_guests, invitation_type, user_id")
+      .eq("id", id)
+      .single();
 
-      if (eventErr) return res.status(500).json({ error: eventErr.message });
+    if (eventErr) return res.status(500).json({ error: eventErr.message });
 
-      const guestsNeeded = event.max_guests || 0;
-      const productType = (event.invitation_type || "standard").split(":")[0];
+    const willBePublished = body.status === "published" || currentEvent.status === "published";
 
+    // Si intenta publicar o si ya está publicado y cambia algo, verificar saldo
+    if (willBePublished && (body.status === "published" || patch.max_guests !== undefined || patch.invitation_type !== undefined)) {
+      const nextMax = patch.max_guests !== undefined ? (Number(patch.max_guests) || 0) : (currentEvent.max_guests || 0);
+      const nextTypeRaw = patch.invitation_type !== undefined ? patch.invitation_type : (currentEvent.invitation_type || "standard");
+      const nextProductType = nextTypeRaw.split(":")[0];
+
+      // 1. Obtener balance total comprado
       const { data: balance, error: balanceErr } = await supabaseAdmin
         .from("invitation_balances")
-        .select("total_purchased, total_used")
+        .select("total_purchased")
         .eq("user_id", userId)
-        .eq("product_type", productType)
+        .eq("product_type", nextProductType)
         .maybeSingle();
 
       if (balanceErr) return res.status(500).json({ error: balanceErr.message });
 
       const totalPurchased = balance?.total_purchased || 0;
-      const totalUsed = balance?.total_used || 0;
-      const available = totalPurchased - totalUsed;
 
-      if (available < guestsNeeded) {
+      // 2. Calcular uso "otros eventos" (solo de publicados)
+      const { totalMaxGuests: currentTotalReserved } = await getEventUsageMetrics(userId, nextProductType);
+
+      let usageOthers = currentTotalReserved;
+      if (currentEvent.status === "published" && currentEvent.invitation_type?.split(":")[0] === nextProductType) {
+        // Si ya está publicado, su max_guests está incluido en currentTotalReserved
+        usageOthers = Math.max(0, currentTotalReserved - (currentEvent.max_guests || 0));
+      }
+
+      // El disponible real es: Compradas - (Lo ya ocupado por otros publicados)
+      const availableForThisEvent = totalPurchased - usageOthers;
+
+      if (nextMax > availableForThisEvent) {
         return res.status(403).json({
           error: "Saldo de invitaciones insuficiente",
-          needed: guestsNeeded,
-          available: available
+          needed: nextMax,
+          available: availableForThisEvent,
+          message: `El límite de ${nextMax} excede tu saldo disponible para publicar (${availableForThisEvent} invitaciones libres de otras reservas).`
         });
       }
 
-      patch.status = "published";
+      if (body.status === "published") patch.status = "published";
     }
 
     if (Object.keys(patch).length === 0 && !body.status) {
@@ -416,5 +481,7 @@ module.exports = {
   createEvent,
   patchEvent,
   deleteEvent,
-  exportGuests
+  exportGuests,
+  getEventUsageMetrics,
+  getUserConfirmedRSVPs // Exportar para limpieza de banco
 };
