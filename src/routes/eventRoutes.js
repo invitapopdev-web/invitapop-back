@@ -24,11 +24,14 @@ router.get("/public/:id", getEventPublic);
  */
 router.use(requireAuth);
 
+const { sendGuestInvitation } = require("../controllers/invitationController");
+
 router.get("/", listEvents);
 router.get("/:id", getEventPrivate);
 router.post("/", createEvent);
 router.patch("/:id", patchEvent);
 router.delete("/:id", deleteEvent);
-router.get("/:id/export", exportGuests); 
+router.get("/:id/export", exportGuests);
+router.post("/:eventId/guests/:guestId/send-invitation", sendGuestInvitation);
 
 module.exports = router;

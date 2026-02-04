@@ -236,7 +236,7 @@ async function postPublicRsvp(req, res, next) {
       upsertedAnswers = upData || [];
     }
 
-    // Increment total_used in invitation_balances
+    // Incrementar total_used en el banco de invitaciones (gasto real)
     const attendingCount = createdGuests.filter((g) => g.attending).length;
     if (attendingCount > 0) {
       const productType = (event.invitation_type || "standard").split(":")[0];
@@ -500,9 +500,35 @@ async function deletePrivateGroup(req, res, next) {
   }
 }
 
+/**
+ * GET PÚBLICO:
+ * Obtiene datos básicos del invitado (nombre) para pre-rellenar el RSVP.
+ * GET /api/public/events/:eventId/guests/:guestId
+ */
+async function getGuestPublic(req, res, next) {
+  try {
+    const { eventId, guestId } = req.params;
+
+    const { data: guest, error } = await supabaseAdmin
+      .from("guests")
+      .select("id, full_name, email, phone")
+      .eq("id", guestId)
+      .eq("event_id", eventId)
+      .maybeSingle();
+
+    if (error) return res.status(500).json({ error: error.message });
+    if (!guest) return res.status(404).json({ error: "Guest not found" });
+
+    return res.json({ guest });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   getEventRsvpTree,
   postPublicRsvp,
+  getGuestPublic, // Exportado
   patchPrivateGroup,
   patchPrivateGuest,
   deletePrivateGuest,

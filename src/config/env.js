@@ -22,6 +22,8 @@ const env = {
   STRIPE_PUBLIC_KEY: process.env.STRIPE_PUBLIC_KEY,
   STRIPE_SECRET_KEY: required("STRIPE_SECRET_KEY"),
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
+  RESEND_API_KEY: process.env.RESEND_API_KEY,
+  RESEND_TEMPLATE_ID: process.env.RESEND_TEMPLATE_ID,
 };
 
 module.exports = { env };
