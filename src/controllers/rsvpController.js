@@ -239,23 +239,28 @@ async function postPublicRsvp(req, res, next) {
     // Incrementar total_used en el banco de invitaciones (gasto real)
     const attendingCount = createdGuests.filter((g) => g.attending).length;
     if (attendingCount > 0) {
-      const productType = (event.invitation_type || "standard").split(":")[0];
+      const invitationType = (event.invitation_type || "").toLowerCase();
 
-      const { data: balance, error: balErr } = await supabaseAdmin
-        .from("invitation_balances")
-        .select("id, total_used")
-        .eq("user_id", event.user_id)
-        .eq("product_type", productType)
-        .maybeSingle();
+      // Solo descontamos saldo en el RSVP si es explícitamente tipo URL
+      if (invitationType.startsWith("url")) {
+        const productType = invitationType.split(":")[0];
 
-      if (!balErr && balance) {
-        await supabaseAdmin
+        const { data: balance, error: balErr } = await supabaseAdmin
           .from("invitation_balances")
-          .update({
-            total_used: (balance.total_used || 0) + attendingCount,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", balance.id);
+          .select("id, total_used")
+          .eq("user_id", event.user_id)
+          .eq("product_type", productType)
+          .maybeSingle();
+
+        if (!balErr && balance) {
+          await supabaseAdmin
+            .from("invitation_balances")
+            .update({
+              total_used: (balance.total_used || 0) + attendingCount,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", balance.id);
+        }
       }
     }
 
