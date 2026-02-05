@@ -33,7 +33,39 @@ async function sendGuestInvitation(req, res, next) {
         // 3. Generar URL personalizada
         const invitationUrl = `${env.FRONTEND_PUBLIC_URL}/invitation/${eventId}/${guestId}`;
 
-        // 4. Enviar email vía Resend
+        // 4. Enviar email vía Resend (solo descontar balance si es el primer envío exitoso Y es tipo EMAIL)
+        const isFirstSend = guest.email_status !== "sent";
+        const invitationType = (event.invitation_type || "").toLowerCase();
+        const productType = invitationType.split(":")[0];
+
+        if (isFirstSend && productType === "email") {
+            // Verificar balance antes de enviar
+            const { data: balance, error: balErr } = await supabaseAdmin
+                .from("invitation_balances")
+                .select("id, total_purchased, total_used")
+                .eq("user_id", userId)
+                .eq("product_type", productType)
+                .maybeSingle();
+
+            if (balErr) return res.status(500).json({ error: "Error verificando saldo" });
+
+            const purchased = balance?.total_purchased || 0;
+            const used = balance?.total_used || 0;
+
+            if (purchased - used <= 0) {
+                return res.status(403).json({ error: "Saldo insuficiente para enviar invitaciones de este tipo." });
+            }
+
+            // Descontar saldo provisionalmente (o realmente)
+            // Aquí lo hacemos antes de enviar para evitar race conditions si el usuario le da muchas veces
+            const { error: updBalErr } = await supabaseAdmin
+                .from("invitation_balances")
+                .update({ total_used: used + 1, updated_at: new Date().toISOString() })
+                .eq("id", balance.id);
+
+            if (updBalErr) return res.status(500).json({ error: "Error descontando saldo" });
+        }
+
         const variables = {
             guest_name: guest.full_name,
             event_name: event.title_text,
