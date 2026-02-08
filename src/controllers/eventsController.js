@@ -133,6 +133,7 @@ async function getEventPrivate(req, res, next) {
 async function getEventPublic(req, res, next) {
   try {
     const { id } = req.params;
+    const { guestId } = req.query; // Recibimos guestId si viene del frontend personalizado
 
     const { data, error } = await supabaseAdmin
       .from("events")
@@ -145,6 +146,42 @@ async function getEventPublic(req, res, next) {
 
     // Si no existe o no está publicado => 404 (no reveles si existe en draft)
     if (!data) return res.status(404).json({ error: "Not found" });
+
+    const invType = (data.invitation_type || "").toLowerCase();
+
+    // Bloqueo mutuo:
+    // 1. Si el evento es tipo EMAIL, debe venir un guestId válido
+    if (invType.startsWith("email")) {
+      if (!guestId) {
+        return res.status(403).json({
+          error: "Forbidden",
+          message: "Esta invitación es personal. Por favor usa el enlace recibido en tu email.",
+        });
+      }
+
+      // Validar que el guestId pertenezca a este evento
+      const { data: guest, error: gErr } = await supabaseAdmin
+        .from("guests")
+        .select("id")
+        .eq("id", guestId)
+        .eq("event_id", id)
+        .maybeSingle();
+
+      if (gErr || !guest) {
+        return res.status(403).json({
+          error: "Forbidden",
+          message: "El enlace de invitación no es válido para este evento.",
+        });
+      }
+    }
+
+    // 2. Si el evento es tipo URL, NO debe venir un guestId (esas rutas son solo para email)
+    if (invType.startsWith("url") && guestId) {
+      return res.status(403).json({
+        error: "Forbidden",
+        message: "Esta ruta no es válida para este tipo de evento. Por favor usa el enlace general.",
+      });
+    }
 
     return res.json({ event: data });
   } catch (err) {

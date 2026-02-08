@@ -514,6 +514,25 @@ async function getGuestPublic(req, res, next) {
   try {
     const { eventId, guestId } = req.params;
 
+    // 1. Obtener tipo de invitación del evento
+    const { data: event, error: evErr } = await supabaseAdmin
+      .from("events")
+      .select("invitation_type")
+      .eq("id", eventId)
+      .maybeSingle();
+
+    if (evErr || !event) return res.status(404).json({ error: "Event not found" });
+
+    const invType = (event.invitation_type || "").toLowerCase();
+
+    // 2. Si el evento es tipo URL, no permitimos acceso por guestId (debe ser invitación general)
+    if (invType.startsWith("url")) {
+      return res.status(403).json({
+        error: "Forbidden",
+        message: "Esta ruta no está disponible para este tipo de evento.",
+      });
+    }
+
     const { data: guest, error } = await supabaseAdmin
       .from("guests")
       .select("id, full_name, email, phone")
