@@ -51,6 +51,11 @@ async function sendGuestInvitation(req, res, next) {
         if (eventErr) return res.status(500).json({ error: eventErr.message });
         if (!event) return res.status(404).json({ error: "Event not found or unauthorized" });
 
+        // 1.1 Validar que el evento sea de tipo email
+        if (!event.invitation_type?.startsWith("email")) {
+            return res.status(400).json({ error: "Este evento no admite envío de invitaciones por correo electrónico." });
+        }
+
         // 2. Obtener datos del invitado
         const { data: guest, error: guestErr } = await supabaseAdmin
             .from("guests")
@@ -113,6 +118,7 @@ async function sendAllGuestInvitations(req, res, next) {
     try {
         const { eventId } = req.params;
         const userId = req.user.id;
+        const pendingOnly = req.query.pendingOnly === "true";
 
         // 1. Validar dueño del evento
         const { data: event, error: eventErr } = await supabaseAdmin
@@ -125,6 +131,11 @@ async function sendAllGuestInvitations(req, res, next) {
         if (eventErr) return res.status(500).json({ error: eventErr.message });
         if (!event) return res.status(404).json({ error: "Event not found or unauthorized" });
 
+        // 1.1 Validar que el evento sea de tipo email
+        if (!event.invitation_type?.startsWith("email")) {
+            return res.status(400).json({ error: "Este evento no admite envío masivo de invitaciones por correo electrónico." });
+        }
+
         // 2. Obtener invitados con email válido
         const { data: allGuests, error: guestsErr } = await supabaseAdmin
             .from("guests")
@@ -133,8 +144,15 @@ async function sendAllGuestInvitations(req, res, next) {
 
         if (guestsErr) return res.status(500).json({ error: guestsErr.message });
 
-        const guests = (allGuests || []).filter(g => g.email && g.email.trim().length > 0);
-        if (!guests.length) return res.status(400).json({ error: "No guests found with valid email" });
+        let guests = (allGuests || []).filter(g => g.email && g.email.trim().length > 0);
+
+        if (pendingOnly) {
+            guests = guests.filter(g => g.email_status === "queued");
+        }
+
+        if (!guests.length) {
+            return res.status(400).json({ error: pendingOnly ? "No hay invitados pendientes por enviar" : "No se encontraron invitados con email válido" });
+        }
 
         const invitationType = (event.invitation_type || "").toLowerCase();
         const productType = invitationType.split(":")[0];
