@@ -4,6 +4,7 @@ const { requireAuth } = require("../middlewares/requireAuth");
 const {
   getEventRsvpTree,
   postPublicRsvp,
+  postPersonalizedRsvp,
   getGuestPublic, // Importado
   patchPrivateGroup,
   patchPrivateGuest,
@@ -37,6 +38,7 @@ router.delete("/events/:eventId/rsvp/groups/:groupId", requireAuth, deletePrivat
 // ======================
 
 router.post("/public/events/:eventId/rsvp", postPublicRsvp);
+router.post("/public/events/:eventId/guests/:guestId/rsvp", postPersonalizedRsvp);
 router.get("/public/events/:eventId/guests/:guestId", getGuestPublic);
 
 module.exports = router;

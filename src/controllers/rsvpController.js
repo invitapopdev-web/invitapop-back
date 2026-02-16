@@ -138,6 +138,101 @@ async function getEventRsvpTree(req, res, next) {
  *   ]
  * }
  */
+/**
+ * POST PERSONALIZADO (RSVP para Email):
+ * Se usa cuando ya conocemos al invitado (viene de un enlace con guestId).
+ * En lugar de crear, ACTUALIZA su registro existente.
+ *
+ * POST /api/public/events/:eventId/guests/:guestId/rsvp
+ */
+async function postPersonalizedRsvp(req, res, next) {
+  try {
+    const { eventId, guestId } = req.params;
+    const { group, guests } = req.body || {}; // Solo procesamos el primer guest del array por simplicidad en personalizado
+
+    if (!eventId || !guestId) return res.status(400).json({ error: "Missing eventId or guestId" });
+    if (!Array.isArray(guests) || guests.length === 0) {
+      return res.status(400).json({ error: "guests array is required" });
+    }
+
+    const incomingGuest = guests[0]; // El invitado principal
+
+    // 1. Verificar que el invitado existe y pertenece al evento
+    const { data: existingGuest, error: guestErr } = await supabaseAdmin
+      .from("guests")
+      .select("*")
+      .eq("id", guestId)
+      .eq("event_id", eventId)
+      .maybeSingle();
+
+    if (guestErr) return res.status(500).json({ error: guestErr.message });
+    if (!existingGuest) return res.status(404).json({ error: "Guest not found in this event" });
+
+    // 2. Validar preguntas permitidas
+    const { data: eventQuestions, error: qErr } = await supabaseAdmin
+      .from("questions")
+      .select("id")
+      .eq("event_id", eventId);
+
+    if (qErr) return res.status(500).json({ error: qErr.message });
+    const allowedQuestionIds = new Set((eventQuestions || []).map((q) => q.id));
+
+    // 3. Actualizar Grupo (opcional)
+    if (group && existingGuest.group_id) {
+      await supabaseAdmin
+        .from("groups")
+        .update({
+          group_name: group.group_name || null,
+          contact_email: group.contact_email || null,
+          contact_phone: group.contact_phone || null,
+        })
+        .eq("id", existingGuest.group_id);
+    }
+
+    // 4. Actualizar Invitado
+    const { data: updatedGuest, error: updErr } = await supabaseAdmin
+      .from("guests")
+      .update({
+        full_name: incomingGuest.full_name || existingGuest.full_name,
+        phone: incomingGuest.phone || existingGuest.phone,
+        attending: typeof incomingGuest.attending === "boolean" ? incomingGuest.attending : existingGuest.attending,
+      })
+      .eq("id", guestId)
+      .select("*")
+      .single();
+
+    if (updErr) return res.status(500).json({ error: updErr.message });
+
+    // 5. Upsert respuestas
+    const ans = Array.isArray(incomingGuest.answers) ? incomingGuest.answers : [];
+    const answerRows = ans
+      .filter((a) => a?.question_id && allowedQuestionIds.has(a.question_id))
+      .map((a) => ({
+        event_id: eventId,
+        group_id: existingGuest.group_id,
+        guest_id: guestId,
+        question_id: a.question_id,
+        answer: a.answer == null ? "" : String(a.answer),
+      }));
+
+    if (answerRows.length) {
+      const { error: ansErr } = await supabaseAdmin
+        .from("answer_questions")
+        .upsert(answerRows, { onConflict: "guest_id,question_id" });
+
+      if (ansErr) return res.status(500).json({ error: ansErr.message });
+    }
+
+    return res.status(200).json({
+      ok: true,
+      message: "RSVP updated correctly",
+      guest: updatedGuest,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function postPublicRsvp(req, res, next) {
   try {
     const { eventId } = req.params;
@@ -183,6 +278,9 @@ async function postPublicRsvp(req, res, next) {
 
     if (groupCreateErr) return res.status(500).json({ error: groupCreateErr.message });
 
+    const invitationType = (event.invitation_type || "").toLowerCase();
+    const isEmailType = invitationType.startsWith("email");
+
     // Crear guests (batch)
     const guestsPayload = guests.map((g) => {
       if (!g?.full_name) throw new Error("Each guest must include full_name");
@@ -192,8 +290,8 @@ async function postPublicRsvp(req, res, next) {
         full_name: g.full_name,
         email: g.email || null,
         phone: g.phone || null,
-        attending: !!g.attending,
-
+        attending: typeof g.attending === "boolean" ? g.attending : null,
+        email_status: isEmailType ? "queued" : null
       };
     });
 
@@ -353,7 +451,7 @@ async function patchPrivateGuest(req, res, next) {
     if (full_name !== undefined) patch.full_name = full_name;
     if (email !== undefined) patch.email = email || null;
     if (phone !== undefined) patch.phone = phone || null;
-    if (attending !== undefined) patch.attending = !!attending;
+    if (attending !== undefined) patch.attending = typeof attending === "boolean" ? attending : null;
 
 
     let updatedGuest = guest;
@@ -535,7 +633,7 @@ async function getGuestPublic(req, res, next) {
 
     const { data: guest, error } = await supabaseAdmin
       .from("guests")
-      .select("id, full_name, email, phone")
+      .select("id, full_name, email, phone, attending, group_id")
       .eq("id", guestId)
       .eq("event_id", eventId)
       .maybeSingle();
@@ -543,7 +641,20 @@ async function getGuestPublic(req, res, next) {
     if (error) return res.status(500).json({ error: error.message });
     if (!guest) return res.status(404).json({ error: "Guest not found" });
 
-    return res.json({ guest });
+    // 3. Obtener respuestas previas
+    const { data: answers, error: ansErr } = await supabaseAdmin
+      .from("answer_questions")
+      .select("question_id, answer")
+      .eq("guest_id", guestId);
+
+    if (ansErr) return res.status(500).json({ error: ansErr.message });
+
+    return res.json({
+      guest: {
+        ...guest,
+        answers: answers || []
+      }
+    });
   } catch (err) {
     next(err);
   }
@@ -552,6 +663,7 @@ async function getGuestPublic(req, res, next) {
 module.exports = {
   getEventRsvpTree,
   postPublicRsvp,
+  postPersonalizedRsvp,
   getGuestPublic, // Exportado
   patchPrivateGroup,
   patchPrivateGuest,
