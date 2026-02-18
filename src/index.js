@@ -13,6 +13,8 @@ const templateCategoriesRoutes = require("./routes/templateCategoriesRoutes");
 const categoriesRoutes = require("./routes/categoriesRoutes");
 const invitationBalancesRoutes = require("./routes/invitationBalancesRoutes");
 const stripeRoutes = require("./routes/stripeRoutes");
+const paymentRoutes = require("./routes/paymentRoutes");
+const profileRoutes = require("./routes/profileRoutes");
 
 const app = express();
 
@@ -78,6 +80,8 @@ app.use("/api/categories", categoriesRoutes);
 app.use("/api", rsvpRoutes);
 app.use("/api/invitation-balances", invitationBalancesRoutes);
 app.use("/api/stripe", stripeRoutes);
+app.use("/api/payments", paymentRoutes);
+app.use("/api/profile", profileRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);
