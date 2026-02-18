@@ -6,6 +6,7 @@ const {
   postPublicRsvp,
   postPersonalizedRsvp,
   getGuestPublic, // Importado
+  trackGuestOpen,
   patchPrivateGroup,
   patchPrivateGuest,
   deletePrivateGuest,
@@ -40,5 +41,6 @@ router.delete("/events/:eventId/rsvp/groups/:groupId", requireAuth, deletePrivat
 router.post("/public/events/:eventId/rsvp", postPublicRsvp);
 router.post("/public/events/:eventId/guests/:guestId/rsvp", postPersonalizedRsvp);
 router.get("/public/events/:eventId/guests/:guestId", getGuestPublic);
+router.patch("/public/guests/:guestId/track-open", trackGuestOpen);
 
 module.exports = router;

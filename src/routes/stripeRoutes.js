@@ -8,5 +8,6 @@ router.post("/create-checkout-session", requireAuth, stripeController.createChec
 
 // Note: webhook needs raw body, handled in index.js
 router.post("/webhook", stripeController.webhookHandler);
+router.post("/verify-session", requireAuth, stripeController.verifyCheckoutSession);
 
 module.exports = router;

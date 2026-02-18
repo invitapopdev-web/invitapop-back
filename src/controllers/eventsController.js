@@ -275,6 +275,16 @@ async function patchEvent(req, res, next) {
                 });
             }
 
+            // SEGURIDAD EXTRA: Si el evento YA está publicado y se intenta SUBIR el límite, 
+            // solo se permite si el saldo disponible cubría el total.
+            // (La lógica de arriba ya cubre esto, pero dejamos claro que es obligatorio para el estado publicado)
+            if (currentEvent.status === "published" && nextMax > currentEvent.max_guests && nextMax > availableForThisEvent) {
+                return res.status(403).json({
+                    error: "Forbidden",
+                    message: "No puedes aumentar el límite de un evento publicado sin saldo suficiente o compra previa."
+                });
+            }
+
             if (body.status === "published") patch.status = "published";
         }
 

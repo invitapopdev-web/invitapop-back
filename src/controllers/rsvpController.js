@@ -203,6 +203,14 @@ async function postPersonalizedRsvp(req, res, next) {
 
     if (updErr) return res.status(500).json({ error: updErr.message });
 
+    // Mark as completed if it was an email invitation
+    if (existingGuest.email_status) {
+      await supabaseAdmin
+        .from("guests")
+        .update({ email_status: "completed" })
+        .eq("id", guestId);
+    }
+
     // 5. Upsert respuestas
     const ans = Array.isArray(incomingGuest.answers) ? incomingGuest.answers : [];
     const answerRows = ans
@@ -660,11 +668,40 @@ async function getGuestPublic(req, res, next) {
   }
 }
 
+async function trackGuestOpen(req, res, next) {
+  try {
+    const { guestId } = req.params;
+
+    const { data: guest, error: gErr } = await supabaseAdmin
+      .from("guests")
+      .select("id, email_status")
+      .eq("id", guestId)
+      .maybeSingle();
+
+    if (gErr || !guest) return res.status(404).json({ error: "Guest not found" });
+
+    // Solo pasamos a 'opened' si estaba en 'sent' o 'queued'
+    if (guest.email_status === "sent" || guest.email_status === "queued") {
+      await supabaseAdmin
+        .from("guests")
+        .update({ email_status: "opened" })
+        .eq("id", guestId);
+
+      console.log(`[Tracking] Invitado ${guestId} marcó como 'opened'`);
+    }
+
+    return res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   getEventRsvpTree,
   postPublicRsvp,
   postPersonalizedRsvp,
   getGuestPublic, // Exportado
+  trackGuestOpen,
   patchPrivateGroup,
   patchPrivateGuest,
   deletePrivateGuest,
