@@ -126,7 +126,7 @@ async function createTemplate(req, res, next) {
   try {
     if (!req.user) return res.status(401).json({ error: "No autenticado" });
 
-    const { name, slug, thumbnail_url, is_active, design_json } = req.body || {};
+    const { name, slug, thumbnail_url, is_active, design_json, top } = req.body || {};
 
     if (!name || typeof name !== "string") return badRequest(res, "name is required");
     if (!slug || typeof slug !== "string") return badRequest(res, "slug is required");
@@ -154,6 +154,7 @@ async function createTemplate(req, res, next) {
       thumbnail_url: thumbnail_url.trim(),
       is_active: typeof is_active === "boolean" ? is_active : true,
       design_json: designJsonString,
+      top: typeof top === "boolean" ? top : false,
     };
 
     const { data, error } = await supabaseAdmin
@@ -176,7 +177,7 @@ async function patchTemplate(req, res, next) {
     if (!req.user) return res.status(401).json({ error: "No autenticado" });
 
     const { id } = req.params;
-    const { name, slug, thumbnail_url, is_active, design_json, design_json_patch } = req.body || {};
+    const { name, slug, thumbnail_url, is_active, design_json, design_json_patch, top } = req.body || {};
 
     const { data: current, error: curErr } = await supabaseAdmin
       .from("templates")
@@ -200,6 +201,7 @@ async function patchTemplate(req, res, next) {
     if (typeof slug === "string") patchPayload.slug = slug.trim();
     if (typeof thumbnail_url === "string") patchPayload.thumbnail_url = thumbnail_url.trim();
     if (typeof is_active === "boolean") patchPayload.is_active = is_active;
+    if (typeof top === "boolean") patchPayload.top = top;
 
     if (design_json !== undefined) {
       const normalized = normalizeDesignJson(design_json);

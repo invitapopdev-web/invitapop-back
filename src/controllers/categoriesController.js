@@ -27,7 +27,8 @@ async function listCategories(req, res, next) {
 
     let query = supabaseAdmin
       .from("categories")
-      .select("id, created_at, name, slug, parent_id")
+      .select("id, created_at, name, slug, parent_id, sort_order, is_active, description")
+      .order("sort_order", { ascending: true })
       .order("created_at", { ascending: false });
 
     if (parent_id !== undefined) {
@@ -53,7 +54,7 @@ async function getCategory(req, res, next) {
 
     const { data, error } = await supabaseAdmin
       .from("categories")
-      .select("id, created_at, name, slug, parent_id")
+      .select("id, created_at, name, slug, parent_id, sort_order, is_active, description")
       .eq("id", id)
       .maybeSingle();
 
@@ -68,11 +69,11 @@ async function getCategory(req, res, next) {
 
 // -------------------------
 // POST (ADMIN) /api/categories
-// body: { name, slug, parent_id? }
+// body: { name, slug, parent_id?, sort_order?, is_active?, description? }
 // -------------------------
 async function createCategory(req, res, next) {
   try {
-    const { name, slug, parent_id } = req.body || {};
+    const { name, slug, parent_id, sort_order, is_active, description } = req.body || {};
 
     if (!name || typeof name !== "string") return badRequest(res, "name is required");
     if (!slug || typeof slug !== "string") return badRequest(res, "slug is required");
@@ -80,7 +81,7 @@ async function createCategory(req, res, next) {
     const normalizedParent = normalizeParentId(parent_id);
     if (normalizedParent === "__INVALID__") return badRequest(res, "parent_id must be UUID or null");
 
-    // slug único (si tu DB ya tiene unique, esto igual te ayuda a dar error bonito)
+    // slug único
     const { data: existing, error: exErr } = await supabaseAdmin
       .from("categories")
       .select("id")
@@ -106,12 +107,15 @@ async function createCategory(req, res, next) {
       name: name.trim(),
       slug: slug.trim(),
       parent_id: normalizedParent === undefined ? null : normalizedParent,
+      sort_order: typeof sort_order === "number" ? sort_order : 0,
+      is_active: typeof is_active === "boolean" ? is_active : true,
+      description: typeof description === "string" ? description.trim() : null,
     };
 
     const { data, error } = await supabaseAdmin
       .from("categories")
       .insert(payload)
-      .select("id, created_at, name, slug, parent_id")
+      .select("id, created_at, name, slug, parent_id, sort_order, is_active, description")
       .single();
 
     if (error) return res.status(500).json({ error: error.message });
@@ -124,16 +128,16 @@ async function createCategory(req, res, next) {
 
 // -------------------------
 // PATCH (ADMIN) /api/categories/:id
-// body: { name?, slug?, parent_id? }
+// body: { name?, slug?, parent_id?, sort_order?, is_active?, description? }
 // -------------------------
 async function patchCategory(req, res, next) {
   try {
     const { id } = req.params;
-    const { name, slug, parent_id } = req.body || {};
+    const { name, slug, parent_id, sort_order, is_active, description } = req.body || {};
 
     const { data: current, error: curErr } = await supabaseAdmin
       .from("categories")
-      .select("id, name, slug, parent_id")
+      .select("id, name, slug, parent_id, sort_order, is_active, description")
       .eq("id", id)
       .maybeSingle();
 
@@ -189,6 +193,20 @@ async function patchCategory(req, res, next) {
       patch.parent_id = normalizedParent;
     }
 
+    if (sort_order !== undefined) {
+      if (typeof sort_order !== "number") return badRequest(res, "sort_order must be a number");
+      patch.sort_order = sort_order;
+    }
+
+    if (is_active !== undefined) {
+      if (typeof is_active !== "boolean") return badRequest(res, "is_active must be a boolean");
+      patch.is_active = is_active;
+    }
+
+    if (description !== undefined) {
+      patch.description = typeof description === "string" ? description.trim() : null;
+    }
+
     if (Object.keys(patch).length === 0) {
       return badRequest(res, "No fields to update");
     }
@@ -197,7 +215,7 @@ async function patchCategory(req, res, next) {
       .from("categories")
       .update(patch)
       .eq("id", id)
-      .select("id, created_at, name, slug, parent_id")
+      .select("id, created_at, name, slug, parent_id, sort_order, is_active, description")
       .single();
 
     if (error) return res.status(500).json({ error: error.message });
