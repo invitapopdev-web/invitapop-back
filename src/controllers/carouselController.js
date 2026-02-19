@@ -1,25 +1,9 @@
-// controllers/carouselController.js
 const { supabaseAdmin } = require("../config/supabaseClient");
 const crypto = require("crypto");
+const { processImage } = require("../utils/imageUtils");
+const { deleteImageFromStorage } = require("../utils/storageUtils");
 
-const BUCKET = "templates"; // Reusing the templates bucket or 'images' if it exists. Based on user info it should be 'carousel' folder inside a bucket.
-
-async function deleteImageFromStorage(url) {
-    if (!url) return;
-    try {
-        // Extract path from public URL
-        // Public URL format: https://[project].supabase.co/storage/v1/object/public/[bucket]/[path]
-        const parts = url.split("/storage/v1/object/public/");
-        if (parts.length < 2) return;
-        const fullPath = parts[1];
-        const bucket = fullPath.split("/")[0];
-        const path = fullPath.split("/").slice(1).join("/");
-
-        await supabaseAdmin.storage.from(bucket).remove([path]);
-    } catch (err) {
-        console.error("Error deleting image from storage:", err);
-    }
-}
+const BUCKET = "templates";
 
 async function listSlides(req, res, next) {
     try {
@@ -46,20 +30,20 @@ async function createSlide(req, res, next) {
 
         if (files.pcImage) {
             const file = files.pcImage[0];
-            const ext = file.mimetype.split("/")[1];
-            const name = `${Date.now()}-pc-${crypto.randomBytes(4).toString("hex")}.${ext}`;
+            const processedBuffer = await processImage(file.buffer);
+            const name = `${Date.now()}-pc-${crypto.randomBytes(4).toString("hex")}.webp`;
             const path = `carousel/${name}`;
-            const { data, error } = await supabaseAdmin.storage.from(BUCKET).upload(path, file.buffer, { contentType: file.mimetype });
+            const { data, error } = await supabaseAdmin.storage.from(BUCKET).upload(path, processedBuffer, { contentType: "image/webp" });
             if (error) return res.status(500).json({ error: "Error uploading PC image: " + error.message });
             pcImageUrl = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
         }
 
         if (files.mobileImage) {
             const file = files.mobileImage[0];
-            const ext = file.mimetype.split("/")[1];
-            const name = `${Date.now()}-mobile-${crypto.randomBytes(4).toString("hex")}.${ext}`;
+            const processedBuffer = await processImage(file.buffer);
+            const name = `${Date.now()}-mobile-${crypto.randomBytes(4).toString("hex")}.webp`;
             const path = `carousel/${name}`;
-            const { data, error } = await supabaseAdmin.storage.from(BUCKET).upload(path, file.buffer, { contentType: file.mimetype });
+            const { data, error } = await supabaseAdmin.storage.from(BUCKET).upload(path, processedBuffer, { contentType: "image/webp" });
             if (error) return res.status(500).json({ error: "Error uploading mobile image: " + error.message });
             mobileImageUrl = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
         }
@@ -106,11 +90,11 @@ async function updateSlide(req, res, next) {
 
         if (files.pcImage) {
             const file = files.pcImage[0];
-            const ext = file.mimetype.split("/")[1];
-            const name = `${Date.now()}-pc-${crypto.randomBytes(4).toString("hex")}.${ext}`;
+            const processedBuffer = await processImage(file.buffer);
+            const name = `${Date.now()}-pc-${crypto.randomBytes(4).toString("hex")}.webp`;
             const path = `carousel/${name}`;
 
-            const { data, error } = await supabaseAdmin.storage.from(BUCKET).upload(path, file.buffer, { contentType: file.mimetype });
+            const { data, error } = await supabaseAdmin.storage.from(BUCKET).upload(path, processedBuffer, { contentType: "image/webp" });
             if (error) return res.status(500).json({ error: "Error uploading PC image: " + error.message });
 
             // Delete old image
@@ -120,11 +104,11 @@ async function updateSlide(req, res, next) {
 
         if (files.mobileImage) {
             const file = files.mobileImage[0];
-            const ext = file.mimetype.split("/")[1];
-            const name = `${Date.now()}-mobile-${crypto.randomBytes(4).toString("hex")}.${ext}`;
+            const processedBuffer = await processImage(file.buffer);
+            const name = `${Date.now()}-mobile-${crypto.randomBytes(4).toString("hex")}.webp`;
             const path = `carousel/${name}`;
 
-            const { data, error } = await supabaseAdmin.storage.from(BUCKET).upload(path, file.buffer, { contentType: file.mimetype });
+            const { data, error } = await supabaseAdmin.storage.from(BUCKET).upload(path, processedBuffer, { contentType: "image/webp" });
             if (error) return res.status(500).json({ error: "Error uploading mobile image: " + error.message });
 
             // Delete old image

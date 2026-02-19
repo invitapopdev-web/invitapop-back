@@ -1,5 +1,6 @@
 const crypto = require("crypto");
 const { supabaseAdmin } = require("../config/supabaseClient");
+const { processImage } = require("../utils/imageUtils");
 
 const BUCKET = "templates";
 
@@ -31,19 +32,34 @@ async function uploadTemplateImage(req, res, next) {
 
     const { data: tpl, error } = await supabaseAdmin
       .from("templates")
-      .select("id, design_json")
+      .select("id, thumbnail_url, design_json")
       .eq("id", id)
       .maybeSingle();
 
     if (error || !tpl) return res.status(404).json({ error: "Template not found" });
 
-    const ext = file.mimetype.split("/")[1];
-    const name = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}.${ext}`;
+    // --- Cleanup Logic: Delete old image if it exists ---
+    let oldImageUrl = null;
+    if (MAP[type].column) {
+      oldImageUrl = tpl[MAP[type].column];
+    } else {
+      const dj = safeJson(tpl.design_json);
+      oldImageUrl = dj[MAP[type].jsonKey];
+    }
+
+    if (oldImageUrl) {
+      const { deleteImageFromStorage } = require("../utils/storageUtils");
+      await deleteImageFromStorage(oldImageUrl);
+    }
+    // ----------------------------------------------------
+
+    const processedBuffer = await processImage(file.buffer);
+    const name = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}.webp`;
     const path = `templates/${id}/${type}/${name}`;
 
     const up = await supabaseAdmin.storage
       .from(BUCKET)
-      .upload(path, file.buffer, { contentType: file.mimetype });
+      .upload(path, processedBuffer, { contentType: "image/webp" });
 
     if (up.error) return res.status(500).json({ error: up.error.message });
 
