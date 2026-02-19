@@ -262,6 +262,23 @@ async function deleteTemplate(req, res, next) {
 
 
 // GET /api/templates/public
+// GET /api/templates/public/top
+async function listTopTemplates(req, res, next) {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("templates")
+      .select("id, created_at, name, slug, thumbnail_url, design_json")
+      .eq("is_active", true)
+      .eq("top", true)
+      .order("created_at", { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ templates: data });
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function listPublicTemplates(req, res, next) {
   try {
     const { data, error } = await supabaseAdmin
@@ -305,5 +322,6 @@ module.exports = {
   patchTemplate,
   deleteTemplate,
   listPublicTemplates,
-  getPublicTemplate
+  getPublicTemplate,
+  listTopTemplates
 };
