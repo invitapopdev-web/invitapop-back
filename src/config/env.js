@@ -24,6 +24,8 @@ const env = {
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
   RESEND_API_KEY: process.env.RESEND_API_KEY,
   RESEND_TEMPLATE_ID: process.env.RESEND_TEMPLATE_ID,
+  CONSENT_IP_HASH_PEPPER:
+    process.env.CONSENT_IP_HASH_PEPPER || "invitapop-cookie-pepper-2026",
 };
 
 module.exports = { env };
