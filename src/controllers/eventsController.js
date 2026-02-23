@@ -63,25 +63,33 @@ async function getUserConfirmedRSVPs(userId, productType) {
     }
 }
 
-async function getEventUsageMetrics(userId, productType) {
+async function getEventUsageMetrics(userId) {
     try {
-        // 1. Obtener todos los eventos publicados
+        // 1. Obtener balance total (suma de todos los tipos: email, url, all)
+        const { data: balances, error: balanceErr } = await supabaseAdmin
+            .from("invitation_balances")
+            .select("total_purchased")
+            .eq("user_id", userId);
+
+        if (balanceErr) throw balanceErr;
+        const totalPurchased = (balances || []).reduce((acc, b) => acc + (Number(b.total_purchased) || 0), 0);
+
+        // 2. Obtener todos los eventos publicados (de cualquier tipo)
         const { data: events, error: eventsErr } = await supabaseAdmin
             .from("events")
             .select("id, max_guests")
             .eq("user_id", userId)
-            .eq("status", "published")
-            .ilike("invitation_type", `${productType}%`);
+            .eq("status", "published");
 
         if (eventsErr) throw eventsErr;
 
-        // 2. Sumar max_guests
+        // 3. Sumar max_guests de todos los publicados
         const totalMaxGuests = (events || []).reduce((acc, ev) => acc + (Number(ev.max_guests) || 0), 0);
 
-        return { totalMaxGuests };
+        return { totalPurchased, totalMaxGuests };
     } catch (err) {
         console.error("Error getting event usage metrics:", err);
-        return { totalMaxGuests: 0 };
+        return { totalPurchased: 0, totalMaxGuests: 0 };
     }
 }
 
@@ -239,31 +247,18 @@ async function patchEvent(req, res, next) {
         // Si intenta publicar o si ya está publicado y cambia algo, verificar saldo
         if (willBePublished && (body.status === "published" || patch.max_guests !== undefined || patch.invitation_type !== undefined)) {
             const nextMax = patch.max_guests !== undefined ? (Number(patch.max_guests) || 0) : (currentEvent.max_guests || 0);
-            const nextTypeRaw = patch.invitation_type !== undefined ? patch.invitation_type : (currentEvent.invitation_type || "standard");
-            const nextProductType = nextTypeRaw.split(":")[0];
 
-            // 1. Obtener balance total comprado
-            const { data: balance, error: balanceErr } = await supabaseAdmin
-                .from("invitation_balances")
-                .select("total_purchased")
-                .eq("user_id", userId)
-                .eq("product_type", nextProductType)
-                .maybeSingle();
+            // 1. Obtener métricas consolidadas
+            const { totalPurchased, totalMaxGuests: currentTotalReserved } = await getEventUsageMetrics(userId);
 
-            if (balanceErr) return res.status(500).json({ error: balanceErr.message });
-
-            const totalPurchased = balance?.total_purchased || 0;
-
-            // 2. Calcular uso "otros eventos" (solo de publicados)
-            const { totalMaxGuests: currentTotalReserved } = await getEventUsageMetrics(userId, nextProductType);
-
+            // 2. Calcular uso "otros eventos"
             let usageOthers = currentTotalReserved;
-            if (currentEvent.status === "published" && currentEvent.invitation_type?.split(":")[0] === nextProductType) {
-                // Si ya está publicado, su max_guests está incluido en currentTotalReserved
+            if (currentEvent.status === "published") {
+                // Si ya está publicado, su max_guests actual ya está en currentTotalReserved, lo restamos para ver qué queda para el "nuevo" límite
                 usageOthers = Math.max(0, currentTotalReserved - (currentEvent.max_guests || 0));
             }
 
-            // El disponible real es: Compradas - (Lo ya ocupado por otros publicados)
+            // El disponible real es: Compradas (Totales) - (Lo ya ocupado por otros publicados)
             const availableForThisEvent = totalPurchased - usageOthers;
 
             if (nextMax > availableForThisEvent) {
@@ -271,17 +266,7 @@ async function patchEvent(req, res, next) {
                     error: "Saldo de invitaciones insuficiente",
                     needed: nextMax,
                     available: availableForThisEvent,
-                    message: `El límite de ${nextMax} excede tu saldo disponible para publicar (${availableForThisEvent} invitaciones libres de otras reservas).`
-                });
-            }
-
-            // SEGURIDAD EXTRA: Si el evento YA está publicado y se intenta SUBIR el límite, 
-            // solo se permite si el saldo disponible cubría el total.
-            // (La lógica de arriba ya cubre esto, pero dejamos claro que es obligatorio para el estado publicado)
-            if (currentEvent.status === "published" && nextMax > currentEvent.max_guests && nextMax > availableForThisEvent) {
-                return res.status(403).json({
-                    error: "Forbidden",
-                    message: "No puedes aumentar el límite de un evento publicado sin saldo suficiente o compra previa."
+                    message: `El límite de ${nextMax} excede tu saldo disponible total (${availableForThisEvent} invitaciones libres).`
                 });
             }
 

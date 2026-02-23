@@ -441,7 +441,7 @@ async function postPublicRsvp(req, res, next) {
           .from("invitation_balances")
           .select("id, total_used")
           .eq("user_id", event.user_id)
-          .eq("product_type", productType)
+
           .maybeSingle();
 
         if (!balErr && balance) {
