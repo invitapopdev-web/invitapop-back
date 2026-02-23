@@ -16,6 +16,7 @@ const stripeRoutes = require("./routes/stripeRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
 const profileRoutes = require("./routes/profileRoutes");
 const carouselRoutes = require("./routes/carouselRoutes");
+const cookieConsentRoutes = require("./routes/cookieConsentRoutes");
 
 const app = express();
 
@@ -84,6 +85,7 @@ app.use("/api/stripe", stripeRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/carousel", carouselRoutes);
+app.use("/api", cookieConsentRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);

@@ -21,101 +21,187 @@ async function assertEventOwner(eventId, userId) {
 /**
  * GET PRIVADO (owner):
  * Lista grupos del evento con invitados y sus respuestas + la pregunta.
+ * Soporta paginación, búsqueda por nombre/email/telefono y filtro de asistencia.
  *
- * GET /api/events/:eventId/rsvp-tree
+ * GET /api/events/:eventId/rsvp-tree?page=1&limit=30&search=...&attending=all
  */
 async function getEventRsvpTree(req, res, next) {
   try {
     const { eventId } = req.params;
+    const { page = 1, limit = 30, search = "", attending = "all" } = req.query;
     const userId = req.user?.id;
 
     const own = await assertEventOwner(eventId, userId);
     if (!own.ok) return res.status(own.status).json({ error: own.error });
 
-    const [
-      { data: groups, error: gErr },
-      { data: guests, error: guErr },
-      { data: answers, error: aErr },
-    ] = await Promise.all([
-      supabaseAdmin
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const offset = (pageNum - 1) * limitNum;
+
+    const s = search.trim();
+    const sPattern = `%${s}%`;
+
+    // --- PASO 1: Identificar qué GRUPOS cumplen los criterios ---
+
+    // A) IDs de grupos que machean por NOMBRE DE GRUPO
+    let groupIdsByGroupName = [];
+    if (s) {
+      const { data: grpMatches } = await supabaseAdmin
         .from("groups")
-        .select("*")
+        .select("id")
         .eq("event_id", eventId)
-        .order("created_at", { ascending: true }),
+        .ilike("group_name", sPattern);
+      groupIdsByGroupName = (grpMatches || []).map(g => g.id);
+    }
 
-      supabaseAdmin
-        .from("guests")
-        .select("*")
-        .eq("event_id", eventId)
-        .order("created_at", { ascending: true }),
+    // B) IDs de grupos que machean por INVITADOS (nombre, email, tel O asistencia)
+    let guestQuery = supabaseAdmin
+      .from("guests")
+      .select("group_id")
+      .eq("event_id", eventId);
 
-      supabaseAdmin
-        .from("answer_questions")
-        .select(`
-          id,
-          created_at,
-          event_id,
-          group_id,
-          guest_id,
-          question_id,
-          answer,
-          questions:question_id (
-            id,
-            created_at,
-            event_id,
-            label,
-            type,
-            options,
-            sort_order,
-            is_required
+    if (attending === "yes") guestQuery = guestQuery.eq("attending", true);
+    else if (attending === "no") guestQuery = guestQuery.eq("attending", false);
+    else if (attending === "pending") guestQuery = guestQuery.is("attending", null);
+
+    if (s) {
+      guestQuery = guestQuery.or(`full_name.ilike.${sPattern},email.ilike.${sPattern},phone.ilike.${sPattern}`);
+    }
+
+    const { data: guestMatches, error: gMatchErr } = await guestQuery;
+    if (gMatchErr) return res.status(500).json({ error: gMatchErr.message });
+
+    const groupIdsByGuests = (guestMatches || []).map(g => g.group_id);
+
+    // C) Combinar IDs (Operación depende de si buscamos o no)
+    let finalGroupIds = [];
+    if (s) {
+      // Si hay búsqueda: Unión de macheos por grupo O macheos por invitado (que cumplan asistencia)
+      // Pero si hay filtro de asistencia, el grupo DEBE tener al menos un invitado que cumpla ese filtro.
+      // Por simplificación, tomamos los groupIds de invitados que cumplen los filtros de búsqueda/asistencia
+      // Y sumamos los groupIds que machean por nombre de grupo SIEMPRE Y CUANDO esos grupos
+      // tengan invitados que cumplan el filtro de asistencia (si aplica).
+
+      if (attending !== "all") {
+        // Si hay asistencia, solo valen los IDs que vinieron de la query de guests (porque esa ya filtró asistencia)
+        finalGroupIds = Array.from(new Set(groupIdsByGuests));
+
+        // Pero espera, si el grupo machea por nombre, TODOS sus invitados deberían "contar"?
+        // No, el usuario espera ver el grupo solo si hay alguien asistiendo/no asistiendo según el filtro.
+      } else {
+        // Si no hay filtro de asistencia, es la unión simple
+        finalGroupIds = Array.from(new Set([...groupIdsByGroupName, ...groupIdsByGuests]));
+      }
+    } else {
+      // Si NO hay búsqueda, solo manda el filtro de asistencia sobre los invitados
+      if (attending !== "all") {
+        finalGroupIds = Array.from(new Set(groupIdsByGuests));
+      } else {
+        // Caso base: Sin filtros, sacamos todos los grupos del evento
+        const { data: allG } = await supabaseAdmin.from("groups").select("id").eq("event_id", eventId);
+        finalGroupIds = (allG || []).map(g => g.id);
+      }
+    }
+
+    const totalCount = finalGroupIds.length;
+    // IMPORTANTE: Mantener orden por created_at (tendremos que hacer esto en la carga final o aquí)
+    // Para simplificar, obtenemos los IDs y luego los cargamos ordenados.
+
+    // --- PASO 2: Cargar datos paginados ---
+    const paginatedIds = finalGroupIds.slice(offset, offset + limitNum);
+
+    if (paginatedIds.length === 0) {
+      // Estadísticas globales rápidas
+      const { data: allStats } = await supabaseAdmin.from("guests").select("attending, email, email_status").eq("event_id", eventId);
+      return res.json({
+        event_id: eventId,
+        groups: [],
+        stats: calculateGlobalStats(allStats || []),
+        pagination: { totalItems: totalCount, totalPages: Math.ceil(totalCount / limitNum), currentPage: pageNum, itemsPerPage: limitNum }
+      });
+    }
+
+    const { data: fullGroups, error: fetchErr } = await supabaseAdmin
+      .from("groups")
+      .select(`
+        *,
+        guests (
+          *,
+          answer_questions (
+            id, created_at, answer, question_id,
+            questions:question_id (id, label, type, options, sort_order, is_required)
           )
-        `)
-        .eq("event_id", eventId)
-        .order("created_at", { ascending: true }),
-    ]);
+        )
+      `)
+      .in("id", paginatedIds)
+      .order("created_at", { ascending: true });
 
-    if (gErr) return res.status(500).json({ error: gErr.message });
-    if (guErr) return res.status(500).json({ error: guErr.message });
-    if (aErr) return res.status(500).json({ error: aErr.message });
+    if (fetchErr) return res.status(500).json({ error: fetchErr.message });
 
-    // Indexar answers por guest_id
-    const answersByGuest = new Map();
-    for (const row of answers || []) {
-      const gid = row.guest_id;
-      if (!answersByGuest.has(gid)) answersByGuest.set(gid, []);
-      answersByGuest.get(gid).push({
-        id: row.id,
-        created_at: row.created_at,
-        question_id: row.question_id,
-        answer: row.answer,
-        question: row.questions || null,
-      });
-    }
+    // Filtrado secundario en memoria para los invitados dentro de los grupos cargados
+    // (Asegura que el Accordion solo muestre los invitados que machean el filtro actual)
+    const formattedGroups = fullGroups.map(grp => {
+      let filteredGuests = grp.guests || [];
 
-    // Indexar guests por group_id (y anexar respuestas)
-    const guestsByGroup = new Map();
-    for (const guest of guests || []) {
-      const grpId = guest.group_id;
-      if (!guestsByGroup.has(grpId)) guestsByGroup.set(grpId, []);
-      guestsByGroup.get(grpId).push({
-        ...guest,
-        answers: answersByGuest.get(guest.id) || [],
-      });
-    }
+      if (attending !== "all") {
+        const want = attending === "yes" ? true : attending === "no" ? false : null;
+        filteredGuests = filteredGuests.filter(g => g.attending === want);
+      }
 
-    // Montar árbol final
-    const tree = (groups || []).map((grp) => ({
-      ...grp,
-      guests: guestsByGroup.get(grp.id) || [],
-    }));
+      const groupMatchesSearch = s && (grp.group_name || "").toLowerCase().includes(s.toLowerCase());
+      if (s && !groupMatchesSearch) {
+        filteredGuests = filteredGuests.filter(g => {
+          const sl = s.toLowerCase();
+          return (g.full_name || "").toLowerCase().includes(sl) ||
+            (g.email || "").toLowerCase().includes(sl) ||
+            (g.phone || "").toLowerCase().includes(sl);
+        });
+      }
+
+      return {
+        ...grp,
+        guests: filteredGuests.map(guest => ({
+          ...guest,
+          answers: (guest.answer_questions || []).map(aq => ({
+            id: aq.id,
+            created_at: aq.created_at,
+            question_id: aq.question_id,
+            answer: aq.answer,
+            question: aq.questions || null
+          }))
+        }))
+      };
+    }).filter(g => g.guests.length > 0);
+
+    // Estadísticas globales para los contadores superiores
+    const { data: allStats } = await supabaseAdmin.from("guests").select("attending, email, email_status").eq("event_id", eventId);
 
     return res.json({
       event_id: eventId,
-      groups: tree,
+      groups: formattedGroups,
+      stats: calculateGlobalStats(allStats || []),
+      pagination: {
+        totalItems: totalCount,
+        totalPages: Math.ceil(totalCount / limitNum),
+        currentPage: pageNum,
+        itemsPerPage: limitNum
+      }
     });
   } catch (err) {
     next(err);
   }
+}
+
+function calculateGlobalStats(allStats) {
+  return {
+    total: allStats.length,
+    yes: allStats.filter(g => g.attending === true).length,
+    no: allStats.filter(g => g.attending === false).length,
+    pending: allStats.filter(g => g.attending === null).length,
+    withEmail: allStats.filter(g => g.email?.trim()).length,
+    queued: allStats.filter(g => g.email?.trim() && (g.email_status === "queued" || !g.email_status)).length,
+    sent: allStats.filter(g => g.email?.trim() && g.email_status === "sent").length
+  };
 }
 
 /**

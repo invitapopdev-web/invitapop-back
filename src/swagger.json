@@ -1,0 +1,306 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Invitapop API",
+    "description": "Documentación técnica del backend de Invitapop. Esta API gestiona la creación de invitaciones digitales, autenticación de usuarios, gestión de eventos, confirmaciones RSVP y procesamiento de pagos con Stripe.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Soporte Invitapop"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://api.invitapop.com/api",
+      "description": "Servidor de Producción"
+    },
+    {
+      "url": "http://localhost:3001/api",
+      "description": "Servidor de Desarrollo Local"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "cookieAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "access_token",
+        "description": "Autenticación basada en cookies JWT."
+      }
+    },
+    "schemas": {
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "email": { "type": "string", "format": "email" },
+          "full_name": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Event": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "title_text": { "type": "string" },
+          "event_date": { "type": "string", "format": "date" },
+          "event_time": { "type": "string" },
+          "location": { "type": "string" },
+          "notes": { "type": "string" },
+          "status": { "type": "string", "enum": ["draft", "pending", "published"] },
+          "invitation_type": { "type": "string", "description": "Ej: url:standard o email:standard" },
+          "max_guests": { "type": "integer" },
+          "design_json": { "type": "object" }
+        }
+      },
+      "Guest": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "full_name": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "phone": { "type": "string" },
+          "attending": { "type": "boolean", "nullable": true },
+          "email_status": { "type": "string", "enum": ["queued", "sent", "opened", "completed"] }
+        }
+      },
+      "Template": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "slug": { "type": "string" },
+          "thumbnail_url": { "type": "string" },
+          "is_active": { "type": "boolean" },
+          "top": { "type": "boolean" },
+          "design_json": { "type": "object" }
+        }
+      },
+      "ApiResponse": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" },
+          "message": { "type": "string" }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/auth/register": {
+      "post": {
+        "tags": ["Autenticación"],
+        "summary": "Registrar un nuevo usuario",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password"],
+                "properties": {
+                  "email": { "type": "string" },
+                  "password": { "type": "string" },
+                  "fullName": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Usuario creado correctamente" },
+          "400": { "description": "Datos inválidos" }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": ["Autenticación"],
+        "summary": "Iniciar sesión",
+        "description": "Establece una cookie 'access_token' en el navegador.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password"],
+                "properties": {
+                  "email": { "type": "string" },
+                  "password": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Login exitoso" },
+          "400": { "description": "Credenciales inválidas" }
+        }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "tags": ["Autenticación"],
+        "summary": "Obtener perfil del usuario actual",
+        "security": [{ "cookieAuth": [] }],
+        "responses": {
+          "200": { 
+            "description": "Datos del usuario",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } }
+          }
+        }
+      }
+    },
+    "/events": {
+      "get": {
+        "tags": ["Eventos"],
+        "summary": "Listar eventos del usuario",
+        "security": [{ "cookieAuth": [] }],
+        "responses": {
+          "200": { "description": "Lista de eventos" }
+        }
+      },
+      "post": {
+        "tags": ["Eventos"],
+        "summary": "Crear un nuevo evento",
+        "security": [{ "cookieAuth": [] }],
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/Event" } }
+          }
+        },
+        "responses": {
+          "201": { "description": "Evento creado" }
+        }
+      }
+    },
+    "/events/{id}": {
+      "get": {
+        "tags": ["Eventos"],
+        "summary": "Obtener detalles de un evento",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Detalles del evento" }
+        }
+      },
+      "patch": {
+        "tags": ["Eventos"],
+        "summary": "Actualizar un evento",
+        "description": "Permite actualizar campos y cambiar el estado a 'published' si hay saldo suficiente.",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Evento actualizado" },
+          "403": { "description": "Saldo insuficiente para publicar" }
+        }
+      }
+    },
+    "/events/public/{id}": {
+      "get": {
+        "tags": ["Público"],
+        "summary": "Obtener datos públicos de un evento",
+        "description": "Solo para eventos publicados. Verifica restricciones según el tipo de invitación.",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "guestId", "in": "query", "description": "Obligatorio si el evento es tipo EMAIL" }
+        ],
+        "responses": {
+          "200": { "description": "Datos públicos del evento" }
+        }
+      }
+    },
+    "/public/events/{eventId}/rsvp": {
+      "post": {
+        "tags": ["Confirmaciones (RSVP)"],
+        "summary": "Enviar confirmación RSVP general (URL)",
+        "parameters": [
+          { "name": "eventId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "group": { "type": "object" },
+                  "guests": { "type": "array", "items": { "$ref": "#/components/schemas/Guest" } }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "RSVP registrado" }
+        }
+      }
+    },
+    "/public/events/{eventId}/guests/{guestId}/rsvp": {
+      "post": {
+        "tags": ["Confirmaciones (RSVP)"],
+        "summary": "Enviar confirmación RSVP personalizada (EMAIL)",
+        "description": "Actualiza el registro de un invitado existente.",
+        "parameters": [
+          { "name": "eventId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "guestId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "RSVP actualizado" }
+        }
+      }
+    },
+    "/templates/public": {
+      "get": {
+        "tags": ["Público"],
+        "summary": "Listar plantillas públicas",
+        "responses": {
+          "200": { "description": "Lista de plantillas" }
+        }
+      }
+    },
+    "/stripe/products": {
+      "get": {
+        "tags": ["Pagos"],
+        "summary": "Obtener paquetes de invitaciones disponibles",
+        "responses": {
+          "200": { "description": "Lista de productos de Stripe" }
+        }
+      }
+    },
+    "/stripe/create-checkout-session": {
+      "post": {
+        "tags": ["Pagos"],
+        "summary": "Crear sesión de pago",
+        "security": [{ "cookieAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "priceId": { "type": "string" },
+                  "eventId": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "URL de Checkout de Stripe" }
+        }
+      }
+    },
+    "/carousel": {
+      "get": {
+        "tags": ["Público"],
+        "summary": "Obtener diapositivas del carrusel de inicio",
+        "responses": {
+          "200": { "description": "Lista de slides" }
+        }
+      }
+    }
+  }
+}
