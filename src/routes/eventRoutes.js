@@ -1,5 +1,6 @@
 // src/routes/eventRoutes.js
 const express = require("express");
+const multer = require("multer");
 const { requireAuth } = require("../middlewares/requireAuth");
 const {
   getEventPublic,
@@ -10,8 +11,10 @@ const {
   deleteEvent,
   exportGuests
 } = require("../controllers/eventsController");
+const { uploadEventImage } = require("../controllers/eventImagesController");
 
 const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage() });
 
 /**
  * RUTAS PÚBLICAS (sin auth)
@@ -32,6 +35,7 @@ router.post("/", createEvent);
 router.patch("/:id", patchEvent);
 router.delete("/:id", deleteEvent);
 router.get("/:id/export", exportGuests);
+router.post("/:id/images", upload.single("file"), uploadEventImage);
 router.post("/:eventId/guests/:guestId/send-invitation", sendGuestInvitation);
 router.post("/:eventId/send-all-invitations", sendAllGuestInvitations);
 

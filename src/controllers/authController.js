@@ -38,6 +38,104 @@ async function register(req, res, next) {
       });
     }
 
+    // --- Start Invitation Bonus Logic ---
+    try {
+      if (data && data.user && data.user.id) {
+        const { data: settingsRow, error: settingsErr } = await supabaseAdmin
+          .from('settings')
+          .select('value')
+          .eq('key', 'invitation_bonus_config')
+          .maybeSingle();
+
+        if (settingsRow && settingsRow.value) {
+          let config = null;
+          try {
+            config = JSON.parse(settingsRow.value);
+          } catch (parseErr) {
+            console.error("Error parsing invitation_bonus_config JSON:", parseErr);
+          }
+
+          if (config && config.signup_bonus?.enabled === true && config.signup_bonus?.qty !== undefined) {
+            const qty = parseInt(config.signup_bonus.qty, 10);
+
+            if (!Number.isNaN(qty) && qty > 0) {
+              const newUserId = data.user.id;
+
+              // Check Idempotency
+              const { data: existingBonus, error: checkErr } = await supabaseAdmin
+                .from('invitation_purchases')
+                .select('id')
+                .eq('user_id', newUserId)
+                .eq('product_type', 'signup_bonus')
+                .limit(1);
+
+              if (!checkErr && existingBonus && existingBonus.length === 0) {
+                // Grant Bonus (Insert Purchase)
+                const { error: insertErr } = await supabaseAdmin
+                  .from('invitation_purchases')
+                  .insert({
+                    user_id: newUserId,
+                    pack_name: 'Welcome pack',
+                    product_type: 'signup_bonus',
+                    quantity: qty,
+                    price: 0,
+                    currency: 'EUR',
+                    payment_status: 'gifted',
+                    unit_type: 'invitation',
+                    notes: 'Signup bonus',
+                    stripe_event_id: null,
+                    checkout_session_id: null
+                  });
+
+                if (insertErr) {
+                  console.error("Error inserting signup bonus purchase:", insertErr);
+                } else {
+                  // Update/Insert Balance
+                  const consolidatedType = "all";
+                  const { data: balance, error: fetchBalanceErr } = await supabaseAdmin
+                    .from("invitation_balances")
+                    .select("id, total_purchased")
+                    .eq("user_id", newUserId)
+                    .eq("product_type", consolidatedType)
+                    .maybeSingle();
+
+                  if (!fetchBalanceErr) {
+                    if (balance) {
+                      await supabaseAdmin
+                        .from("invitation_balances")
+                        .update({
+                          total_purchased: (Number(balance.total_purchased) || 0) + qty,
+                          updated_at: new Date().toISOString(),
+                        })
+                        .eq("id", balance.id);
+                    } else {
+                      await supabaseAdmin
+                        .from("invitation_balances")
+                        .insert({
+                          user_id: newUserId,
+                          product_type: consolidatedType,
+                          total_purchased: qty,
+                          total_used: 0,
+                          updated_at: new Date().toISOString(),
+                        });
+                    }
+                  } else {
+                    console.error("Error fetching balance for signup bonus:", fetchBalanceErr);
+                  }
+                }
+              } else if (checkErr) {
+                console.error("Error checking existing signup bonus:", checkErr);
+              }
+            } // end if (!Number.isNaN(qty) && qty > 0)
+          }
+        }
+      }
+    } catch (bonusErr) {
+      console.error("Unexpected error in signup bonus logic:", bonusErr);
+    }
+    // --- End Invitation Bonus Logic ---
+
+    // Return success to client
     return res.status(201).json({
       user: data.user,
       session: data.session,
