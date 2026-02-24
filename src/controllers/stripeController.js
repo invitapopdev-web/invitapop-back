@@ -12,19 +12,22 @@ const getProducts = async (req, res) => {
             expand: ["data.default_price"],
         });
 
-        const formattedProducts = products.data.map((product) => {
-            const price = product.default_price;
-            return {
-                id: product.id,
-                name: product.name,
-                description: product.description,
-                image: product.images?.[0] || null,
-                priceId: price ? price.id : null,
-                amount: price ? price.unit_amount / 100 : 0,
-                currency: price ? price.currency : "eur",
-                metadata: product.metadata,
-            };
-        });
+        // Filtrar solo productos con metadata type "all"
+        const formattedProducts = products.data
+            .filter((product) => product.metadata?.type === "all")
+            .map((product) => {
+                const price = product.default_price;
+                return {
+                    id: product.id,
+                    name: product.name,
+                    description: product.description,
+                    image: product.images?.[0] || null,
+                    priceId: price ? price.id : null,
+                    amount: price ? price.unit_amount / 100 : 0,
+                    currency: price ? price.currency : "eur",
+                    metadata: product.metadata,
+                };
+            });
 
         return res.json(formattedProducts);
     } catch (error) {
@@ -134,12 +137,13 @@ const finalizePurchase = async (session, stripeEventId = null) => {
         return { ok: true, alreadyProcessed: true };
     }
 
-    // 2) Actualizar Balance
+    // 2) Actualizar Balance (Siempre como tipo "all")
+    const consolidatedType = "all";
     const { data: balance, error: fetchError } = await supabaseAdmin
         .from("invitation_balances")
         .select("id, total_purchased")
         .eq("user_id", userId)
-        .eq("product_type", productType)
+        .eq("product_type", consolidatedType)
         .maybeSingle();
 
     if (fetchError) throw fetchError;
@@ -158,7 +162,7 @@ const finalizePurchase = async (session, stripeEventId = null) => {
             .from("invitation_balances")
             .insert({
                 user_id: userId,
-                product_type: productType,
+                product_type: consolidatedType,
                 total_purchased: quantity,
                 total_used: 0,
                 updated_at: new Date().toISOString(),

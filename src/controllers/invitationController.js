@@ -81,7 +81,6 @@ async function sendGuestInvitation(req, res, next) {
                 .from("invitation_balances")
                 .select("id, total_purchased, total_used")
                 .eq("user_id", userId)
-                .eq("product_type", productType)
                 .maybeSingle();
 
             if (balErr) return res.status(500).json({ error: "Error verificando saldo" });
@@ -165,7 +164,6 @@ async function sendAllGuestInvitations(req, res, next) {
                 .from("invitation_balances")
                 .select("id, total_purchased, total_used")
                 .eq("user_id", userId)
-                .eq("product_type", productType)
                 .maybeSingle();
 
             if (!balErr && balData) {

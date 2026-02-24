@@ -21,28 +21,25 @@ async function getMyInvitationBalances(req, res, next) {
 
     if (error) return res.status(500).json({ error: error.message });
 
-    // Enriquecer con reservas dinámicas
-    const enrichedBalances = await Promise.all((bankBalances || []).map(async (bal) => {
-      const { totalMaxGuests } = await getEventUsageMetrics(userId, bal.product_type);
+    // Enriquecer con reservas dinámicas (Consolidado)
+    const { totalPurchased, totalMaxGuests } = await getEventUsageMetrics(userId);
 
-      const purchased = toInt(bal.total_purchased);
-      const usedRSVPs = toInt(bal.total_used); // Solo RSVPs confirmados
-      const reserved = totalMaxGuests; // Suma de max_guests de publicados
+    // El balance consumido (RSVPs) sigue siendo útil por separado si se desea, 
+    // pero para el pool global sumamos total_used de todas las filas.
+    const totalUsedRSVPs = (bankBalances || []).reduce((acc, b) => acc + (toInt(b.total_used)), 0);
 
-      // Disponibles = Compradas - Reservadas
-      // (Asumiendo que las RSVPs confirmadas ocurren DENTRO de un evento publicado, 
-      // y si el evento se borra, las confirmadas siguen restando del banco).
-      // Pero para simplificar al usuario:
-      const available = Math.max(0, purchased - reserved);
+    const available = Math.max(0, totalPurchased - totalMaxGuests);
 
-      return {
-        ...bal,
-        total_reserved: reserved,
-        available: available
-      };
-    }));
+    const consolidatedBalance = {
+      product_type: "all",
+      total_purchased: totalPurchased,
+      total_used: totalUsedRSVPs,
+      total_reserved: totalMaxGuests,
+      available: available,
+      updated_at: bankBalances?.[0]?.updated_at || new Date().toISOString()
+    };
 
-    return res.json({ balances: enrichedBalances });
+    return res.json({ balances: [consolidatedBalance] });
   } catch (err) {
     next(err);
   }
