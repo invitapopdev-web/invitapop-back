@@ -68,7 +68,8 @@ const createCheckoutSession = async (req, res) => {
             cancel_url: cancelUrl,
             metadata,
             payment_intent_data: { metadata },
-            allow_promotion_codes: true
+            allow_promotion_codes: true,
+            customer_creation: "always",
         });
 
         // 2) Si éxito, marcar como pending
