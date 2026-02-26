@@ -78,8 +78,7 @@ async function updateBonusQty(req, res, next) {
         const { error: updateError } = await supabaseAdmin
             .from('settings')
             .update({
-                value: JSON.stringify(newConfig),
-                updated_at: new Date().toISOString()
+                value: JSON.stringify(newConfig)
             })
             .eq('key', 'invitation_bonus_config');
 
