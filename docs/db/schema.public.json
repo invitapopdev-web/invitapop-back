@@ -1,0 +1,957 @@
+{
+  "schema": "public",
+  "tables": {
+    "answer_questions": {
+      "primary_key": [
+        "id"
+      ],
+      "columns": {
+        "id": {
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "unique": false
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "unique": false
+        },
+        "event_id": {
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "group_id": {
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "guest_id": {
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "question_id": {
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "answer": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        }
+      },
+      "foreign_keys": [
+        {
+          "column": "event_id",
+          "references": "public.events(id)"
+        },
+        {
+          "column": "group_id",
+          "references": "public.groups(id)"
+        },
+        {
+          "column": "guest_id",
+          "references": "public.guests(id)"
+        },
+        {
+          "column": "question_id",
+          "references": "public.questions(id)"
+        }
+      ],
+      "unique": []
+    },
+    "carousel": {
+      "primary_key": [
+        "id"
+      ],
+      "columns": {
+        "id": {
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "unique": true
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "unique": false
+        },
+        "sort_order": {
+          "type": "bigint",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "href": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "pcImage": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "mobileImage": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "title": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "subtitle": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "button": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        }
+      },
+      "foreign_keys": [],
+      "unique": [
+        "id"
+      ]
+    },
+    "categories": {
+      "primary_key": [
+        "id"
+      ],
+      "columns": {
+        "id": {
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "unique": false
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "unique": false
+        },
+        "name": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "slug": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "unique": true
+        },
+        "parent_id": {
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "sort_order": {
+          "type": "integer",
+          "nullable": false,
+          "default": "generated_identity",
+          "unique": false
+        },
+        "is_active": {
+          "type": "boolean",
+          "nullable": true,
+          "default": "true",
+          "unique": false
+        },
+        "description": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "img_pc": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "img_mobile": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        }
+      },
+      "foreign_keys": [
+        {
+          "column": "parent_id",
+          "references": "public.categories(id)"
+        }
+      ],
+      "unique": [
+        "slug"
+      ]
+    },
+    "cookie_consents": {
+      "primary_key": [
+        "id"
+      ],
+      "columns": {
+        "id": {
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "unique": false
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "unique": false
+        },
+        "consent_version": {
+          "type": "integer",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "consent_settings": {
+          "type": "jsonb",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "user_agent": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "ip_hash": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "cookies_policy_version": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "consent_id": {
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        }
+      },
+      "foreign_keys": [],
+      "unique": []
+    },
+    "events": {
+      "primary_key": [
+        "id"
+      ],
+      "columns": {
+        "id": {
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "unique": false
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "unique": false
+        },
+        "updated_at": {
+          "type": "timestamptz",
+          "nullable": true,
+          "default": "now()",
+          "unique": false
+        },
+        "user_id": {
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "title_text": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "event_date": {
+          "type": "date",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "event_time": {
+          "type": "time",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "location": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "notes": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "status": {
+          "type": "text",
+          "nullable": false,
+          "default": "draft",
+          "unique": false
+        },
+        "design_json": {
+          "type": "jsonb",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "max_guests": {
+          "type": "integer",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "invitation_type": {
+          "type": "text",
+          "nullable": false,
+          "default": "url",
+          "unique": false
+        }
+      },
+      "foreign_keys": [
+        {
+          "column": "user_id",
+          "references": "auth.users(id)"
+        }
+      ],
+      "unique": []
+    },
+    "groups": {
+      "primary_key": [
+        "id"
+      ],
+      "columns": {
+        "id": {
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "unique": false
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "unique": false
+        },
+        "event_id": {
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "group_name": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "contact_email": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "contact_phone": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        }
+      },
+      "foreign_keys": [
+        {
+          "column": "event_id",
+          "references": "public.events(id)"
+        }
+      ],
+      "unique": []
+    },
+    "guests": {
+      "primary_key": [
+        "id"
+      ],
+      "columns": {
+        "id": {
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "unique": false
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "unique": false
+        },
+        "event_id": {
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "group_id": {
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "full_name": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "email": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "phone": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "attending": {
+          "type": "boolean",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "email_status": {
+          "type": "text",
+          "nullable": true,
+          "default": "queued",
+          "unique": false
+        },
+        "email_error": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "email_message_id": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        }
+      },
+      "foreign_keys": [
+        {
+          "column": "event_id",
+          "references": "public.events(id)"
+        },
+        {
+          "column": "group_id",
+          "references": "public.groups(id)"
+        }
+      ],
+      "unique": []
+    },
+    "invitation_balances": {
+      "primary_key": [
+        "id"
+      ],
+      "columns": {
+        "id": {
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "unique": false
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "unique": false
+        },
+        "user_id": {
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "total_purchased": {
+          "type": "integer",
+          "nullable": false,
+          "default": "0",
+          "unique": false
+        },
+        "total_used": {
+          "type": "integer",
+          "nullable": false,
+          "default": "0",
+          "unique": false
+        },
+        "updated_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "unique": false
+        },
+        "product_type": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        }
+      },
+      "foreign_keys": [
+        {
+          "column": "user_id",
+          "references": "auth.users(id)"
+        }
+      ],
+      "unique": []
+    },
+    "invitation_purchases": {
+      "primary_key": [
+        "id"
+      ],
+      "columns": {
+        "id": {
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "unique": false
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "unique": false
+        },
+        "user_id": {
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "pack_name": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "quantity": {
+          "type": "integer",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "price": {
+          "type": "numeric",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "currency": {
+          "type": "text",
+          "nullable": false,
+          "default": "EUR",
+          "unique": false
+        },
+        "payment_status": {
+          "type": "text",
+          "nullable": false,
+          "default": "processing",
+          "unique": false
+        },
+        "stripe_event_id": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": true
+        },
+        "notes": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "product_type": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "unit_type": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "checkout_session_id": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": true
+        },
+        "stripe_invoice_id": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "stripe_invoice_url": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        }
+      },
+      "foreign_keys": [
+        {
+          "column": "user_id",
+          "references": "auth.users(id)"
+        }
+      ],
+      "unique": [
+        "stripe_event_id",
+        "checkout_session_id"
+      ]
+    },
+    "profiles": {
+      "primary_key": [
+        "id"
+      ],
+      "columns": {
+        "id": {
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "unique": false
+        },
+        "role_id": {
+          "type": "uuid",
+          "nullable": false,
+          "default": "42fcc2d2-23b6-4999-a6c0-f02152393f72",
+          "unique": false
+        },
+        "first_name": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "last_name": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "phone": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        }
+      },
+      "foreign_keys": [
+        {
+          "column": "id",
+          "references": "auth.users(id)"
+        },
+        {
+          "column": "role_id",
+          "references": "public.roles(id)"
+        }
+      ],
+      "unique": []
+    },
+    "questions": {
+      "primary_key": [
+        "id"
+      ],
+      "columns": {
+        "id": {
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "unique": false
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "unique": false
+        },
+        "event_id": {
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "label": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "type": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "options": {
+          "type": "jsonb",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "sort_order": {
+          "type": "bigint",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "is_required": {
+          "type": "boolean",
+          "nullable": true,
+          "default": "false",
+          "unique": false
+        }
+      },
+      "foreign_keys": [
+        {
+          "column": "event_id",
+          "references": "public.events(id)"
+        }
+      ],
+      "unique": []
+    },
+    "roles": {
+      "primary_key": [
+        "id"
+      ],
+      "columns": {
+        "id": {
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "unique": false
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "unique": false
+        },
+        "name": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        }
+      },
+      "foreign_keys": [],
+      "unique": []
+    },
+    "settings": {
+      "primary_key": [
+        "id"
+      ],
+      "columns": {
+        "id": {
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "unique": false
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "unique": false
+        },
+        "key": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "unique": true
+        },
+        "value": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "description": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "is_active": {
+          "type": "boolean",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        }
+      },
+      "foreign_keys": [],
+      "unique": [
+        "key"
+      ]
+    },
+    "template_categories": {
+      "primary_key": [
+        "id"
+      ],
+      "columns": {
+        "id": {
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "unique": false
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "unique": false
+        },
+        "category_id": {
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "template_id": {
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        }
+      },
+      "foreign_keys": [
+        {
+          "column": "category_id",
+          "references": "public.categories(id)"
+        },
+        {
+          "column": "template_id",
+          "references": "public.templates(id)"
+        }
+      ],
+      "unique": []
+    },
+    "templates": {
+      "primary_key": [
+        "id"
+      ],
+      "columns": {
+        "id": {
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "unique": false
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "unique": false
+        },
+        "name": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "slug": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "unique": true
+        },
+        "thumbnail_url": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "is_active": {
+          "type": "boolean",
+          "nullable": true,
+          "default": "false",
+          "unique": false
+        },
+        "design_json": {
+          "type": "jsonb",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "description": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "top": {
+          "type": "boolean",
+          "nullable": true,
+          "default": "false",
+          "unique": false
+        }
+      },
+      "foreign_keys": [],
+      "unique": [
+        "slug"
+      ]
+    }
+  }
+}

@@ -1,5 +1,10 @@
 // controllers/categoriesController.js
 const { supabaseAdmin } = require("../config/supabaseClient");
+const crypto = require("crypto");
+const { processImage } = require("../utils/imageUtils");
+const { deleteImageFromStorage } = require("../utils/storageUtils");
+
+const BUCKET = "templates";
 
 function badRequest(res, msg) {
   return res.status(400).json({ error: msg });
@@ -27,7 +32,7 @@ async function listCategories(req, res, next) {
 
     let query = supabaseAdmin
       .from("categories")
-      .select("id, created_at, name, slug, parent_id, sort_order, is_active, description")
+      .select("id, created_at, name, slug, parent_id, sort_order, is_active, description, img_pc, img_mobile")
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: false });
 
@@ -54,7 +59,7 @@ async function getCategory(req, res, next) {
 
     const { data, error } = await supabaseAdmin
       .from("categories")
-      .select("id, created_at, name, slug, parent_id, sort_order, is_active, description")
+      .select("id, created_at, name, slug, parent_id, sort_order, is_active, description, img_pc, img_mobile")
       .eq("id", id)
       .maybeSingle();
 
@@ -73,7 +78,13 @@ async function getCategory(req, res, next) {
 // -------------------------
 async function createCategory(req, res, next) {
   try {
-    const { name, slug, parent_id, sort_order, is_active, description } = req.body || {};
+    const { name, slug, parent_id, description } = req.body || {};
+    let { sort_order, is_active } = req.body || {};
+
+    if (typeof sort_order === "string") sort_order = parseInt(sort_order, 10);
+    if (typeof is_active === "string") is_active = is_active === "true";
+
+    const files = req.files || {};
 
     if (!name || typeof name !== "string") return badRequest(res, "name is required");
     if (!slug || typeof slug !== "string") return badRequest(res, "slug is required");
@@ -103,19 +114,44 @@ async function createCategory(req, res, next) {
       if (!parent) return res.status(400).json({ error: "parent_id not found" });
     }
 
+    let img_pc = null;
+    let img_mobile = null;
+
+    if (files.img_pc) {
+      const file = files.img_pc[0];
+      const processedBuffer = await processImage(file.buffer);
+      const fileName = `${Date.now()}-pc-${crypto.randomBytes(4).toString("hex")}.webp`;
+      const path = `categories/${fileName}`;
+      const { error } = await supabaseAdmin.storage.from(BUCKET).upload(path, processedBuffer, { contentType: "image/webp" });
+      if (error) return res.status(500).json({ error: "Error uploading PC image: " + error.message });
+      img_pc = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+    }
+
+    if (files.img_mobile) {
+      const file = files.img_mobile[0];
+      const processedBuffer = await processImage(file.buffer);
+      const fileName = `${Date.now()}-mobile-${crypto.randomBytes(4).toString("hex")}.webp`;
+      const path = `categories/${fileName}`;
+      const { error } = await supabaseAdmin.storage.from(BUCKET).upload(path, processedBuffer, { contentType: "image/webp" });
+      if (error) return res.status(500).json({ error: "Error uploading mobile image: " + error.message });
+      img_mobile = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+    }
+
     const payload = {
       name: name.trim(),
       slug: slug.trim(),
       parent_id: normalizedParent === undefined ? null : normalizedParent,
-      sort_order: typeof sort_order === "number" ? sort_order : 0,
+      sort_order: typeof sort_order === "number" && !isNaN(sort_order) ? sort_order : 0,
       is_active: typeof is_active === "boolean" ? is_active : true,
       description: typeof description === "string" ? description.trim() : null,
+      img_pc,
+      img_mobile
     };
 
     const { data, error } = await supabaseAdmin
       .from("categories")
       .insert(payload)
-      .select("id, created_at, name, slug, parent_id, sort_order, is_active, description")
+      .select("id, created_at, name, slug, parent_id, sort_order, is_active, description, img_pc, img_mobile")
       .single();
 
     if (error) return res.status(500).json({ error: error.message });
@@ -133,11 +169,17 @@ async function createCategory(req, res, next) {
 async function patchCategory(req, res, next) {
   try {
     const { id } = req.params;
-    const { name, slug, parent_id, sort_order, is_active, description } = req.body || {};
+    const { name, slug, parent_id, description } = req.body || {};
+    let { sort_order, is_active } = req.body || {};
+
+    if (typeof sort_order === "string") sort_order = parseInt(sort_order, 10);
+    if (typeof is_active === "string") is_active = is_active === "true";
+
+    const files = req.files || {};
 
     const { data: current, error: curErr } = await supabaseAdmin
       .from("categories")
-      .select("id, name, slug, parent_id, sort_order, is_active, description")
+      .select("id, name, slug, parent_id, sort_order, is_active, description, img_pc, img_mobile")
       .eq("id", id)
       .maybeSingle();
 
@@ -207,6 +249,28 @@ async function patchCategory(req, res, next) {
       patch.description = typeof description === "string" ? description.trim() : null;
     }
 
+    if (files.img_pc) {
+      const file = files.img_pc[0];
+      const processedBuffer = await processImage(file.buffer);
+      const fileName = `${Date.now()}-pc-${crypto.randomBytes(4).toString("hex")}.webp`;
+      const path = `categories/${fileName}`;
+      const { error } = await supabaseAdmin.storage.from(BUCKET).upload(path, processedBuffer, { contentType: "image/webp" });
+      if (error) return res.status(500).json({ error: "Error uploading PC image: " + error.message });
+      if (current.img_pc) await deleteImageFromStorage(current.img_pc);
+      patch.img_pc = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+    }
+
+    if (files.img_mobile) {
+      const file = files.img_mobile[0];
+      const processedBuffer = await processImage(file.buffer);
+      const fileName = `${Date.now()}-mobile-${crypto.randomBytes(4).toString("hex")}.webp`;
+      const path = `categories/${fileName}`;
+      const { error } = await supabaseAdmin.storage.from(BUCKET).upload(path, processedBuffer, { contentType: "image/webp" });
+      if (error) return res.status(500).json({ error: "Error uploading mobile image: " + error.message });
+      if (current.img_mobile) await deleteImageFromStorage(current.img_mobile);
+      patch.img_mobile = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+    }
+
     if (Object.keys(patch).length === 0) {
       return badRequest(res, "No fields to update");
     }
@@ -215,7 +279,7 @@ async function patchCategory(req, res, next) {
       .from("categories")
       .update(patch)
       .eq("id", id)
-      .select("id, created_at, name, slug, parent_id, sort_order, is_active, description")
+      .select("id, created_at, name, slug, parent_id, sort_order, is_active, description, img_pc, img_mobile")
       .single();
 
     if (error) return res.status(500).json({ error: error.message });
@@ -237,7 +301,7 @@ async function deleteCategory(req, res, next) {
     // existe?
     const { data: current, error: curErr } = await supabaseAdmin
       .from("categories")
-      .select("id")
+      .select("id, img_pc, img_mobile")
       .eq("id", id)
       .maybeSingle();
 
@@ -265,6 +329,9 @@ async function deleteCategory(req, res, next) {
     if ((linksCount || 0) > 0) {
       return res.status(409).json({ error: "Cannot delete: category is linked to templates" });
     }
+
+    if (current.img_pc) await deleteImageFromStorage(current.img_pc);
+    if (current.img_mobile) await deleteImageFromStorage(current.img_mobile);
 
     const { error } = await supabaseAdmin.from("categories").delete().eq("id", id);
     if (error) return res.status(500).json({ error: error.message });
