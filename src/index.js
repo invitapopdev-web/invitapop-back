@@ -18,6 +18,7 @@ const profileRoutes = require("./routes/profileRoutes");
 const carouselRoutes = require("./routes/carouselRoutes");
 const cookieConsentRoutes = require("./routes/cookieConsentRoutes");
 const adminUsersRoutes = require("./routes/adminUsersRoutes");
+const adminSettingsRoutes = require("./routes/adminSettingsRoutes");
 
 const app = express();
 
@@ -88,6 +89,7 @@ app.use("/api/profile", profileRoutes);
 app.use("/api/carousel", carouselRoutes);
 app.use("/api", cookieConsentRoutes);
 app.use("/api/admin/users", adminUsersRoutes);
+app.use("/api/admin/settings", adminSettingsRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);
