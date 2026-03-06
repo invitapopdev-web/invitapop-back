@@ -25,7 +25,7 @@ async function sendTemplatedEmail({ to, subject, variables }) {
 
   try {
     const { data, error } = await resend.emails.send({
-      from: "Invitapop <hola@peettag.com>", // Ajustar cuando el dominio esté verificado
+      from: "Invitapop <hola@invitapop.com>", // Ajustar cuando el dominio esté verificado
       to,
       subject,
       template: {
