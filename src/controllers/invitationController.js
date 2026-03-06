@@ -2,6 +2,98 @@ const { supabaseAdmin } = require("../config/supabaseClient");
 const { sendTemplatedEmail } = require("../services/emailService");
 const { env } = require("../config/env");
 
+const BULK_EMAIL_LOCK_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutos
+
+function isBulkLockActive(bulkEmailStartedAt) {
+    if (!bulkEmailStartedAt) return false;
+
+    const startedAtMs = new Date(bulkEmailStartedAt).getTime();
+    if (Number.isNaN(startedAtMs)) return false;
+
+    return Date.now() - startedAtMs < BULK_EMAIL_LOCK_TIMEOUT_MS;
+}
+
+async function consumeInvitationBalance(userId) {
+    const { data: balance, error: balErr } = await supabaseAdmin
+        .from("invitation_balances")
+        .select("id, total_purchased, total_used")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+    if (balErr) {
+        return { success: false, error: "Error verificando saldo" };
+    }
+
+    const purchased = balance?.total_purchased || 0;
+    const used = balance?.total_used || 0;
+
+    if (!balance?.id || purchased - used <= 0) {
+        return { success: false, error: "Saldo insuficiente para enviar invitaciones de este tipo." };
+    }
+
+    const { error: updBalErr } = await supabaseAdmin
+        .from("invitation_balances")
+        .update({
+            total_used: used + 1,
+            updated_at: new Date().toISOString(),
+        })
+        .eq("id", balance.id);
+
+    if (updBalErr) {
+        return { success: false, error: "Error descontando saldo" };
+    }
+
+    return { success: true };
+}
+
+async function acquireBulkEmailLock(event) {
+    const nowIso = new Date().toISOString();
+
+    if (isBulkLockActive(event.bulk_email_started_at)) {
+        return { success: false, error: "Ya hay un envío masivo en progreso para este evento." };
+    }
+
+    let query = supabaseAdmin
+        .from("events")
+        .update({ bulk_email_started_at: nowIso })
+        .eq("id", event.id)
+        .eq("user_id", event.user_id)
+        .select("id, bulk_email_started_at")
+        .maybeSingle();
+
+    if (event.bulk_email_started_at) {
+        query = query.eq("bulk_email_started_at", event.bulk_email_started_at);
+    } else {
+        query = query.is("bulk_email_started_at", null);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+        return { success: false, error: "Error bloqueando el envío masivo." };
+    }
+
+    if (!data) {
+        return { success: false, error: "Ya hay un envío masivo en progreso para este evento." };
+    }
+
+    return { success: true, lockValue: nowIso };
+}
+
+async function releaseBulkEmailLock(eventId, userId, lockValue) {
+    let query = supabaseAdmin
+        .from("events")
+        .update({ bulk_email_started_at: null })
+        .eq("id", eventId)
+        .eq("user_id", userId);
+
+    if (lockValue) {
+        query = query.eq("bulk_email_started_at", lockValue);
+    }
+
+    await query;
+}
+
 /**
  * Función interna para procesar el envío de un email a un invitado
  */
@@ -51,7 +143,14 @@ async function sendGuestInvitation(req, res, next) {
         if (eventErr) return res.status(500).json({ error: eventErr.message });
         if (!event) return res.status(404).json({ error: "Event not found or unauthorized" });
 
-        // 1.1 Validar que el evento sea de tipo email
+        // 1.1 Bloquear envío individual si hay masivo en curso
+        if (isBulkLockActive(event.bulk_email_started_at)) {
+            return res.status(409).json({
+                error: "Hay un envío masivo en curso para este evento. Inténtalo de nuevo cuando termine.",
+            });
+        }
+
+        // 1.2 Validar que el evento sea de tipo email
         if (!event.invitation_type?.startsWith("email")) {
             return res.status(400).json({ error: "Este evento no admite envío de invitaciones por correo electrónico." });
         }
@@ -71,33 +170,18 @@ async function sendGuestInvitation(req, res, next) {
         // 3. Generar URL personalizada
         const invitationUrl = `${env.FRONTEND_PUBLIC_URL}/invitation/${eventId}/${guestId}`;
 
-        // 4. Manejar balance (solo si es el primer envío exitoso Y es tipo EMAIL)
-        const isFirstSend = guest.email_status !== "sent";
+        // 4. Manejar balance
+        const isFirstSend = guest.email_status === "queued";
         const invitationType = (event.invitation_type || "").toLowerCase();
         const productType = invitationType.split(":")[0];
 
         if (isFirstSend && productType === "email") {
-            const { data: balance, error: balErr } = await supabaseAdmin
-                .from("invitation_balances")
-                .select("id, total_purchased, total_used")
-                .eq("user_id", userId)
-                .maybeSingle();
+            const balanceResult = await consumeInvitationBalance(userId);
 
-            if (balErr) return res.status(500).json({ error: "Error verificando saldo" });
-
-            const purchased = balance?.total_purchased || 0;
-            const used = balance?.total_used || 0;
-
-            if (purchased - used <= 0) {
-                return res.status(403).json({ error: "Saldo insuficiente para enviar invitaciones de este tipo." });
+            if (!balanceResult.success) {
+                const statusCode = balanceResult.error.includes("insuficiente") ? 403 : 500;
+                return res.status(statusCode).json({ error: balanceResult.error });
             }
-
-            const { error: updBalErr } = await supabaseAdmin
-                .from("invitation_balances")
-                .update({ total_used: used + 1, updated_at: new Date().toISOString() })
-                .eq("id", balance.id);
-
-            if (updBalErr) return res.status(500).json({ error: "Error descontando saldo" });
         }
 
         // 5. Enviar email
@@ -114,6 +198,8 @@ async function sendGuestInvitation(req, res, next) {
 }
 
 async function sendAllGuestInvitations(req, res, next) {
+    let lockValue = null;
+
     try {
         const { eventId } = req.params;
         const userId = req.user.id;
@@ -135,6 +221,14 @@ async function sendAllGuestInvitations(req, res, next) {
             return res.status(400).json({ error: "Este evento no admite envío masivo de invitaciones por correo electrónico." });
         }
 
+        // 1.2 Bloquear envío masivo simultáneo
+        const lockResult = await acquireBulkEmailLock(event);
+        if (!lockResult.success) {
+            return res.status(409).json({ error: lockResult.error });
+        }
+
+        lockValue = lockResult.lockValue;
+
         // 2. Obtener invitados con email válido
         const { data: allGuests, error: guestsErr } = await supabaseAdmin
             .from("guests")
@@ -150,76 +244,55 @@ async function sendAllGuestInvitations(req, res, next) {
         }
 
         if (!guests.length) {
-            return res.status(400).json({ error: pendingOnly ? "No hay invitados pendientes por enviar" : "No se encontraron invitados con email válido" });
+            return res.status(400).json({
+                error: pendingOnly
+                    ? "No hay invitados pendientes por enviar"
+                    : "No se encontraron invitados con email válido",
+            });
         }
 
         const invitationType = (event.invitation_type || "").toLowerCase();
         const productType = invitationType.split(":")[0];
 
-        // 3. Obtener balance actual una sola vez para comprobación previa
-        let currentBalance = 0;
-        let balanceId = null;
-        if (productType === "email") {
-            const { data: balData, error: balErr } = await supabaseAdmin
-                .from("invitation_balances")
-                .select("id, total_purchased, total_used")
-                .eq("user_id", userId)
-                .maybeSingle();
-
-            if (!balErr && balData) {
-                currentBalance = (balData.total_purchased || 0) - (balData.total_used || 0);
-                balanceId = balData.id;
-            }
-        }
-
-        // 4. Procesar envíos
+        // 3. Procesar envíos
         const results = [];
-        let totalDeducted = 0;
 
         for (const guest of guests) {
-            const isFirstTime = guest.email_status !== "sent";
+            const isFirstTime = guest.email_status === "queued";
             const invitationUrl = `${env.FRONTEND_PUBLIC_URL}/invitation/${eventId}/${guest.id}`;
 
-            // Si es tipo email y es primer envío, necesitamos saldo
             if (productType === "email" && isFirstTime) {
-                if (currentBalance <= 0) {
-                    results.push({ guestId: guest.id, success: false, error: "Saldo insuficiente" });
+                const balanceResult = await consumeInvitationBalance(userId);
+
+                if (!balanceResult.success) {
+                    results.push({
+                        guestId: guest.id,
+                        success: false,
+                        error: balanceResult.error,
+                    });
                     continue;
                 }
             }
 
             try {
                 const resSend = await processEmailSend({ event, guest, invitationUrl });
-                results.push({ guestId: guest.id, success: resSend.success, error: resSend.error });
 
-                // SI el envío fue exitoso Y era la primera vez, descontamos 1 del saldo local y DB
-                if (resSend.success && isFirstTime && productType === "email" && balanceId) {
-                    currentBalance--;
-                    totalDeducted++;
-
-                    // Actualizamos balance en DB (lo hacemos uno a uno para seguridad, o podrías acumular)
-                    // Para evitar saturar, lo ideal sería un update al final, pero si el proceso se corta, perdemos el track.
-                    // Vamos a acumular y actualizar cada 10 o al final si son pocos.
-                }
+                results.push({
+                    guestId: guest.id,
+                    success: resSend.success,
+                    error: resSend.error || null,
+                });
             } catch (err) {
-                results.push({ guestId: guest.id, success: false, error: err.message });
+                results.push({
+                    guestId: guest.id,
+                    success: false,
+                    error: err.message,
+                });
             }
 
-            if (guests.length > 5) await new Promise(r => setTimeout(r, 100));
-        }
-
-        // 5. Actualizar saldo total usado en DB si hubo deducciones
-        if (totalDeducted > 0 && balanceId) {
-            const { data: latestBal } = await supabaseAdmin
-                .from("invitation_balances")
-                .select("total_used")
-                .eq("id", balanceId)
-                .single();
-
-            await supabaseAdmin
-                .from("invitation_balances")
-                .update({ total_used: (latestBal?.total_used || 0) + totalDeducted, updated_at: new Date().toISOString() })
-                .eq("id", balanceId);
+            if (guests.length > 5) {
+                await new Promise(r => setTimeout(r, 100));
+            }
         }
 
         const successes = results.filter(r => r.success).length;
@@ -229,11 +302,18 @@ async function sendAllGuestInvitations(req, res, next) {
             total: guests.length,
             sent: successes,
             failed: guests.length - successes,
-            details: results.map(r => ({ id: r.guestId, ok: r.success, err: r.error }))
+            details: results.map(r => ({
+                id: r.guestId,
+                ok: r.success,
+                err: r.error,
+            })),
         });
-
     } catch (err) {
         next(err);
+    } finally {
+        if (lockValue) {
+            await releaseBulkEmailLock(req.params.eventId, req.user.id, lockValue);
+        }
     }
 }
 
