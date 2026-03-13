@@ -68,7 +68,7 @@ async function uploadTemplateImage(req, res, next) {
       .getPublicUrl(path);
 
     const url = pub.publicUrl;
-    const patch = {};
+    const patch = { updated_at: new Date().toISOString() };
 
     if (MAP[type].column) {
       patch[MAP[type].column] = url;
