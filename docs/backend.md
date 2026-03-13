@@ -1,5 +1,6 @@
 # Documentación Técnica - Invitapop (Backend)
 
+
 Esta documentación describe la arquitectura, configuración y funcionamiento del backend de Invitapop, un sistema de gestión de invitaciones digitales y eventos con confirmación RSVP.
 
 ## 1. Resumen del proyecto
