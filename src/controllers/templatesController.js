@@ -87,7 +87,7 @@ async function listTemplates(req, res, next) {
     let query = supabaseAdmin
       .from("templates")
       .select("*")
-      .order("created_at", { ascending: false });
+      .order("updated_at", { ascending: false });
 
     if (typeof isActive === "boolean") query = query.eq("is_active", isActive);
     if (q) query = query.ilike("name", `%${q}%`);
@@ -203,6 +203,8 @@ async function patchTemplate(req, res, next) {
     if (typeof is_active === "boolean") patchPayload.is_active = is_active;
     if (typeof top === "boolean") patchPayload.top = top;
 
+    patchPayload.updated_at = new Date().toISOString();
+
     if (design_json !== undefined) {
       const normalized = normalizeDesignJson(design_json);
       if (!normalized.ok) return badRequest(res, normalized.error);
@@ -248,7 +250,7 @@ async function deleteTemplate(req, res, next) {
 
     const { data, error } = await supabaseAdmin
       .from("templates")
-      .update({ is_active: false })
+      .update({ is_active: false, updated_at: new Date().toISOString() })
       .eq("id", id)
       .select("*")
       .single();
@@ -267,10 +269,10 @@ async function listTopTemplates(req, res, next) {
   try {
     const { data, error } = await supabaseAdmin
       .from("templates")
-      .select("id, created_at, name, slug, thumbnail_url, design_json")
+      .select("id, created_at, updated_at, name, slug, thumbnail_url, design_json")
       .eq("is_active", true)
       .eq("top", true)
-      .order("created_at", { ascending: false });
+      .order("updated_at", { ascending: false });
 
     if (error) return res.status(500).json({ error: error.message });
     return res.json({ templates: data });
@@ -283,9 +285,9 @@ async function listPublicTemplates(req, res, next) {
   try {
     const { data, error } = await supabaseAdmin
       .from("templates")
-      .select("id, created_at, name, slug, thumbnail_url, design_json")
+      .select("id, created_at, updated_at, name, slug, thumbnail_url, design_json")
       .eq("is_active", true)
-      .order("created_at", { ascending: false });
+      .order("updated_at", { ascending: false });
 
     if (error) return res.status(500).json({ error: error.message });
     return res.json({ templates: data });
