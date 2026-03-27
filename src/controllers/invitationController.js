@@ -97,14 +97,49 @@ async function releaseBulkEmailLock(eventId, userId, lockValue) {
 /**
  * Función interna para procesar el envío de un email a un invitado
  */
-async function processEmailSend({ event, guest, invitationUrl }) {
+
+function formatDuration(startTime, endTime) {
+    if (!startTime || !endTime) return "";
+
+    const [startHour, startMinute] = startTime.split(":").map(Number);
+    const [endHour, endMinute] = endTime.split(":").map(Number);
+
+    const startTotalMinutes = startHour * 60 + startMinute;
+    const endTotalMinutes = endHour * 60 + endMinute;
+
+    const diffMinutes = endTotalMinutes - startTotalMinutes;
+
+    if (diffMinutes <= 0) return "";
+
+    const hours = Math.floor(diffMinutes / 60);
+    const minutes = diffMinutes % 60;
+
+    return `${hours}:${String(minutes).padStart(2, "0")}`;
+}
+
+
+async function processEmailSend({ event, guest, invitationUrl, emailHost }) {
+    const eventDuration = formatDuration(event.event_time, event.event_time_end);
+
     const variables = {
+        email_host: emailHost,
         guest_name: guest.full_name,
         event_name: event.title_text,
         event_date: event.event_date || "Por confirmar",
         event_time: event.event_time || "",
+        event_time_end: event.event_time_end || "",
+        event_duration: eventDuration,
         event_location: event.location || "Por confirmar",
         invitation_url: invitationUrl,
+        google_maps_url: event.location
+            ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location)}`
+            : "",
+        google_calendar_url:
+            event.event_date && event.event_time && event.event_time_end
+                ? `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(event.title_text || "")}&dates=${encodeURIComponent(
+                    `${event.event_date.replace(/-/g, "")}T${event.event_time.replace(/:/g, "").slice(0, 4)}00/${event.event_date.replace(/-/g, "")}T${event.event_time_end.replace(/:/g, "").slice(0, 4)}00`
+                )}&location=${encodeURIComponent(event.location || "")}`
+                : ""
     };
 
     const result = await sendTemplatedEmail({
@@ -131,6 +166,8 @@ async function sendGuestInvitation(req, res, next) {
     try {
         const { eventId, guestId } = req.params;
         const userId = req.user.id;
+        const emailHost = req.user.email;
+
 
         // 1. Validar dueño del evento
         const { data: event, error: eventErr } = await supabaseAdmin
@@ -183,9 +220,8 @@ async function sendGuestInvitation(req, res, next) {
                 return res.status(statusCode).json({ error: balanceResult.error });
             }
         }
-
         // 5. Enviar email
-        const result = await processEmailSend({ event, guest, invitationUrl });
+        const result = await processEmailSend({ event, guest, invitationUrl, emailHost });
 
         if (!result.success) {
             return res.status(500).json({ error: "Failed to send email", details: result.error });
@@ -203,6 +239,8 @@ async function sendAllGuestInvitations(req, res, next) {
     try {
         const { eventId } = req.params;
         const userId = req.user.id;
+        const emailHost = req.user.email;
+
         const pendingOnly = req.query.pendingOnly === "true";
 
         // 1. Validar dueño del evento
@@ -275,7 +313,7 @@ async function sendAllGuestInvitations(req, res, next) {
             }
 
             try {
-                const resSend = await processEmailSend({ event, guest, invitationUrl });
+                const resSend = await processEmailSend({ event, guest, invitationUrl, emailHost });
 
                 results.push({
                     guestId: guest.id,
