@@ -11,6 +11,7 @@ const {
   patchPrivateGuest,
   deletePrivateGuest,
   deletePrivateGroup,
+  postBulkRsvp,
 } = require("../controllers/rsvpController");
 
 const router = express.Router();
@@ -21,6 +22,9 @@ const router = express.Router();
 
 // Listado completo por grupos con invitados + respuestas + pregunta
 router.get("/events/:eventId/rsvp-tree", requireAuth, getEventRsvpTree);
+
+// Bulk import guests from CSV
+router.post("/events/:eventId/rsvp/bulk", requireAuth, postBulkRsvp);
 
 // Update group
 router.patch("/events/:eventId/rsvp/groups/:groupId", requireAuth, patchPrivateGroup);
