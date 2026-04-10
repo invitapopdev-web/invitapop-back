@@ -782,6 +782,73 @@ async function trackGuestOpen(req, res, next) {
   }
 }
 
+/**
+ * POST PRIVADO (owner):
+ * Crea múltiples grupos e invitados en bloque.
+ * Se usa para importación por CSV.
+ * Body: { data: [ { group_name, guests: [ { full_name, email, phone } ] } ] }
+ */
+async function postBulkRsvp(req, res, next) {
+  try {
+    const { eventId } = req.params;
+    const { data } = req.body || {};
+    const userId = req.user?.id;
+
+    if (!eventId) return res.status(400).json({ error: "Missing eventId" });
+    if (!Array.isArray(data) || data.length === 0) {
+      return res.status(400).json({ error: "data array is required and must not be empty" });
+    }
+
+    const own = await assertEventOwner(eventId, userId);
+    if (!own.ok) return res.status(own.status).json({ error: own.error });
+
+    const invitationType = (own.event.invitation_type || "").toLowerCase();
+    const isEmailType = invitationType.startsWith("email");
+
+    // Procesamos secuencialmente para asegurar integridad (podría optimizarse a futuro)
+    for (const item of data) {
+      const { group_name, guests } = item;
+
+      // 1. Crear grupo
+      const { data: createdGroup, error: groupErr } = await supabaseAdmin
+        .from("groups")
+        .insert({
+          event_id: eventId,
+          group_name: group_name || null,
+        })
+        .select("id")
+        .single();
+
+      if (groupErr) throw groupErr;
+
+      // 2. Crear invitados para este grupo
+      if (Array.isArray(guests) && guests.length > 0) {
+        const guestsPayload = guests.map((g) => ({
+          event_id: eventId,
+          group_id: createdGroup.id,
+          full_name: g.full_name,
+          email: g.email || null,
+          phone: g.phone || null,
+          email_status: isEmailType ? "queued" : null,
+        }));
+
+        const { error: guestsErr } = await supabaseAdmin
+          .from("guests")
+          .insert(guestsPayload);
+
+        if (guestsErr) throw guestsErr;
+      }
+    }
+
+    return res.status(201).json({
+      ok: true,
+      message: `${data.length} grupos importados correctamente`,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   getEventRsvpTree,
   postPublicRsvp,
@@ -792,4 +859,5 @@ module.exports = {
   patchPrivateGuest,
   deletePrivateGuest,
   deletePrivateGroup,
+  postBulkRsvp,
 };

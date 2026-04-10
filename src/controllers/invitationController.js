@@ -149,7 +149,9 @@ async function processEmailSend({ event, guest, invitationUrl, emailHost }) {
     });
 
     const updatePayload = {
-        email_status: result.success ? "sent" : "failed",
+        email_status: result.success
+            ? (guest.email_status === "completed" ? "completed" : "sent")
+            : "failed",
         email_error: result.success ? null : result.error,
         email_message_id: result.success ? result.messageId : null,
     };
