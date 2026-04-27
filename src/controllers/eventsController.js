@@ -1,5 +1,9 @@
 // src/controllers/eventsController.js
 const { supabaseAdmin } = require("../config/supabaseClient");
+const {
+    deleteImageFromStorage,
+    parsePublicStorageUrl,
+} = require("../utils/storageUtils");
 
 function pick(obj, allowed) {
     const out = {};
@@ -35,6 +39,45 @@ const PUBLIC_FIELDS = [
     "max_guests",
     "invitation_type",
 ];
+
+function collectEventStorageUrls(value, eventId, out = new Set()) {
+    if (!value) return out;
+
+    if (typeof value === "string") {
+        const parsed = parsePublicStorageUrl(value);
+        if (parsed?.path?.startsWith(`event/${eventId}/`)) out.add(value);
+        return out;
+    }
+
+    if (Array.isArray(value)) {
+        value.forEach((item) => collectEventStorageUrls(item, eventId, out));
+        return out;
+    }
+
+    if (typeof value === "object") {
+        Object.values(value).forEach((item) => collectEventStorageUrls(item, eventId, out));
+    }
+
+    return out;
+}
+
+function parseDesignForStorageScan(maybeJson) {
+    if (!maybeJson) return {};
+    if (typeof maybeJson === "object") return maybeJson;
+    if (typeof maybeJson !== "string") return {};
+    try {
+        return JSON.parse(maybeJson);
+    } catch {
+        return {};
+    }
+}
+
+async function deleteRemovedEventImages({ before, after, eventId }) {
+    const beforeUrls = collectEventStorageUrls(parseDesignForStorageScan(before), eventId);
+    const afterUrls = collectEventStorageUrls(parseDesignForStorageScan(after), eventId);
+    const removedUrls = Array.from(beforeUrls).filter((url) => !afterUrls.has(url));
+    await Promise.all(removedUrls.map((url) => deleteImageFromStorage(url)));
+}
 
 async function getUserConfirmedRSVPs(userId, productType) {
     try {
@@ -238,7 +281,7 @@ async function patchEvent(req, res, next) {
         // Validar saldo de invitaciones (siempre, incluso para borradores, para evitar sobre-asignación)
         const { data: currentEvent, error: eventErr } = await supabaseAdmin
             .from("events")
-            .select("status, max_guests, invitation_type, user_id")
+            .select("status, max_guests, invitation_type, user_id, design_json")
             .eq("id", id)
             .single();
 
@@ -292,6 +335,14 @@ async function patchEvent(req, res, next) {
         if (error) return res.status(500).json({ error: error.message });
         if (!data) return res.status(404).json({ error: "Event not found" });
 
+        if (patch.design_json !== undefined) {
+            await deleteRemovedEventImages({
+                before: currentEvent.design_json,
+                after: data.design_json,
+                eventId: id,
+            });
+        }
+
         return res.json({ event: data });
     } catch (err) {
         next(err);
@@ -313,6 +364,9 @@ async function deleteEvent(req, res, next) {
 
         if (error) return res.status(500).json({ error: error.message });
         if (!data) return res.status(404).json({ error: "Event not found" });
+
+        const storageUrls = Array.from(collectEventStorageUrls(data.design_json, id));
+        await Promise.all(storageUrls.map((url) => deleteImageFromStorage(url)));
 
         return res.json({ deleted: true });
     } catch (err) {

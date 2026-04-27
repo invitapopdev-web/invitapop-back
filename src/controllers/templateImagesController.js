@@ -1,6 +1,8 @@
-const crypto = require("crypto");
 const { supabaseAdmin } = require("../config/supabaseClient");
-const { processImage } = require("../utils/imageUtils");
+const {
+  deleteImageFromStorage,
+  uploadProcessedImageToStorage,
+} = require("../utils/storageUtils");
 
 const BUCKET = "templates";
 
@@ -9,6 +11,8 @@ const MAP = {
   background: { jsonKey: "backgroundImageUrl" },
   invitation: { jsonKey: "invitationImageUrl" },
   envelope: { jsonKey: "envelopeImageUrl" },
+  overlay1: { jsonKey: "overlay1Url" },
+  overlay2: { jsonKey: "overlay2Url" },
 };
 
 function safeJson(v) {
@@ -38,7 +42,6 @@ async function uploadTemplateImage(req, res, next) {
 
     if (error || !tpl) return res.status(404).json({ error: "Template not found" });
 
-    // --- Cleanup Logic: Delete old image if it exists ---
     let oldImageUrl = null;
     if (MAP[type].column) {
       oldImageUrl = tpl[MAP[type].column];
@@ -47,27 +50,12 @@ async function uploadTemplateImage(req, res, next) {
       oldImageUrl = dj[MAP[type].jsonKey];
     }
 
-    if (oldImageUrl) {
-      const { deleteImageFromStorage } = require("../utils/storageUtils");
-      await deleteImageFromStorage(oldImageUrl);
-    }
-    // ----------------------------------------------------
-
-    const processedBuffer = await processImage(file.buffer);
-    const name = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}.webp`;
-    const path = `templates/${id}/${type}/${name}`;
-
-    const up = await supabaseAdmin.storage
-      .from(BUCKET)
-      .upload(path, processedBuffer, { contentType: "image/webp" });
-
-    if (up.error) return res.status(500).json({ error: up.error.message });
-
-    const { data: pub } = supabaseAdmin.storage
-      .from(BUCKET)
-      .getPublicUrl(path);
-
-    const url = pub.publicUrl;
+    const uploaded = await uploadProcessedImageToStorage({
+      bucket: BUCKET,
+      folder: `templates/${id}/${type}`,
+      buffer: file.buffer,
+    });
+    const url = uploaded.url;
     const patch = { updated_at: new Date().toISOString() };
 
     if (MAP[type].column) {
@@ -78,12 +66,21 @@ async function uploadTemplateImage(req, res, next) {
       patch.design_json = JSON.stringify(dj);
     }
 
-    const { data: updated } = await supabaseAdmin
+    const { data: updated, error: updateError } = await supabaseAdmin
       .from("templates")
       .update(patch)
       .eq("id", id)
       .select("*")
       .maybeSingle();
+
+    if (updateError || !updated) {
+      await deleteImageFromStorage(url);
+      return res.status(500).json({ error: updateError?.message || "Error updating template" });
+    }
+
+    if (oldImageUrl && oldImageUrl !== url) {
+      await deleteImageFromStorage(oldImageUrl);
+    }
 
     res.json({ ok: true, url, template: updated });
   } catch (err) {
