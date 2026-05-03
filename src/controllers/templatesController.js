@@ -1,5 +1,9 @@
 // controllers/templatesController.js
 const { supabaseAdmin } = require("../config/supabaseClient");
+const {
+  deleteImageFromStorage,
+  parsePublicStorageUrl,
+} = require("../utils/storageUtils");
 
 
 function isPlainObject(v) {
@@ -69,8 +73,52 @@ function toBool(v) {
   return undefined;
 }
 
+function isUuid(v) {
+  return typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+}
+
+function parseCsvUuids(value) {
+  if (!value || typeof value !== "string") return [];
+  return Array.from(
+    new Set(
+      value
+        .split(",")
+        .map((id) => id.trim())
+        .filter((id) => id && isUuid(id))
+    )
+  );
+}
+
 function badRequest(res, msg) {
   return res.status(400).json({ error: msg });
+}
+
+function collectTemplateStorageUrls(value, templateId, out = new Set()) {
+  if (!value) return out;
+
+  if (typeof value === "string") {
+    const parsed = parsePublicStorageUrl(value);
+    if (parsed?.path?.startsWith(`templates/${templateId}/`)) out.add(value);
+    return out;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectTemplateStorageUrls(item, templateId, out));
+    return out;
+  }
+
+  if (typeof value === "object") {
+    Object.values(value).forEach((item) => collectTemplateStorageUrls(item, templateId, out));
+  }
+
+  return out;
+}
+
+async function deleteRemovedTemplateImages({ before, after, templateId }) {
+  const beforeUrls = collectTemplateStorageUrls(before, templateId);
+  const afterUrls = collectTemplateStorageUrls(after, templateId);
+  const removedUrls = Array.from(beforeUrls).filter((url) => !afterUrls.has(url));
+  await Promise.all(removedUrls.map((url) => deleteImageFromStorage(url)));
 }
 
 // ---------- Controllers ----------
@@ -235,6 +283,14 @@ async function patchTemplate(req, res, next) {
       .single();
 
     if (error) return res.status(500).json({ error: error.message });
+    if (patchPayload.design_json !== undefined) {
+      await deleteRemovedTemplateImages({
+        before: safeJsonParse(current.design_json || "{}").value || {},
+        after: safeJsonParse(data.design_json || "{}").value || {},
+        templateId: id,
+      });
+    }
+
     return res.json({ template: data });
   } catch (err) {
     next(err);
@@ -283,6 +339,49 @@ async function listTopTemplates(req, res, next) {
 
 async function listPublicTemplates(req, res, next) {
   try {
+    const categoryIds = parseCsvUuids(req.query.category_ids);
+
+    if (req.query.category_ids !== undefined && categoryIds.length === 0) {
+      return res.json({ templates: [] });
+    }
+
+    if (categoryIds.length > 0) {
+      const { data: links, error: linksError } = await supabaseAdmin
+        .from("template_categories")
+        .select("template_id, category_id")
+        .in("category_id", categoryIds);
+
+      if (linksError) return res.status(500).json({ error: linksError.message });
+
+      const templateIds = Array.from(new Set((links || []).map((item) => item.template_id).filter(Boolean)));
+      if (templateIds.length === 0) return res.json({ templates: [] });
+
+      const { data, error } = await supabaseAdmin
+        .from("templates")
+        .select("id, created_at, updated_at, name, slug, thumbnail_url, design_json")
+        .eq("is_active", true)
+        .in("id", templateIds)
+        .order("updated_at", { ascending: false });
+
+      if (error) return res.status(500).json({ error: error.message });
+
+      const categoryIdsByTemplateId = new Map();
+      for (const link of links || []) {
+        if (!link.template_id || !link.category_id) continue;
+        if (!categoryIdsByTemplateId.has(link.template_id)) {
+          categoryIdsByTemplateId.set(link.template_id, []);
+        }
+        categoryIdsByTemplateId.get(link.template_id).push(link.category_id);
+      }
+
+      return res.json({
+        templates: (data || []).map((template) => ({
+          ...template,
+          category_ids: categoryIdsByTemplateId.get(template.id) || [],
+        })),
+      });
+    }
+
     const { data, error } = await supabaseAdmin
       .from("templates")
       .select("id, created_at, updated_at, name, slug, thumbnail_url, design_json")
