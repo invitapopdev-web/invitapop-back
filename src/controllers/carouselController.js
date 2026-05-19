@@ -4,6 +4,85 @@ const { processImage } = require("../utils/imageUtils");
 const { deleteImageFromStorage } = require("../utils/storageUtils");
 
 const BUCKET = "templates";
+const MB = 1024 * 1024;
+const CAROUSEL_MEDIA_LIMITS = {
+    pc: {
+        image: 5 * MB,
+        gif: 5 * MB,
+        video: 4.5 * MB,
+    },
+    mobile: {
+        image: 5 * MB,
+        gif: 4 * MB,
+        video: 4 * MB,
+    },
+};
+
+function isGifFile(file) {
+    const mimetype = String(file?.mimetype || "").toLowerCase();
+    const originalname = String(file?.originalname || "").toLowerCase();
+    return mimetype === "image/gif" || originalname.endsWith(".gif");
+}
+
+function getCarouselUploadFormat(file) {
+    const mimetype = String(file?.mimetype || "").toLowerCase();
+    const originalname = String(file?.originalname || "").toLowerCase();
+
+    if (mimetype === "video/mp4" || originalname.endsWith(".mp4")) {
+        return { extension: "mp4", contentType: "video/mp4", kind: "video", shouldProcess: false };
+    }
+
+    if (mimetype === "video/webm" || originalname.endsWith(".webm")) {
+        return { extension: "webm", contentType: "video/webm", kind: "video", shouldProcess: false };
+    }
+
+    if (isGifFile(file)) {
+        return { extension: "gif", contentType: "image/gif", kind: "gif", shouldProcess: false };
+    }
+
+    return { extension: "webp", contentType: "image/webp", kind: "image", shouldProcess: true };
+}
+
+function formatMb(bytes) {
+    const value = bytes / MB;
+    return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} MB`;
+}
+
+function assertCarouselMediaSize(file, variant, format) {
+    const limit = CAROUSEL_MEDIA_LIMITS[variant]?.[format.kind] || CAROUSEL_MEDIA_LIMITS.pc.image;
+
+    if (file.buffer.length <= limit) return;
+
+    const label = variant === "pc" ? "PC" : "mobile";
+    const err = new Error(`El archivo ${label} pesa ${formatMb(file.buffer.length)}. Máximo permitido: ${formatMb(limit)}.`);
+    err.statusCode = 413;
+    err.isUploadError = true;
+    throw err;
+}
+
+async function uploadCarouselMedia(file, variant) {
+    const format = getCarouselUploadFormat(file);
+    assertCarouselMediaSize(file, variant, format);
+    const isGif = isGifFile(file);
+    const buffer = format.shouldProcess ? await processImage(file.buffer) : file.buffer;
+    const name = `${Date.now()}-${variant}-${crypto.randomBytes(4).toString("hex")}.${format.extension}`;
+    const path = `carousel/${name}`;
+
+    const { error } = await supabaseAdmin.storage
+        .from(BUCKET)
+        .upload(path, buffer, { contentType: format.contentType });
+
+    if (error) {
+        const label = variant === "pc" ? "PC" : "mobile";
+        const mediaLabel = isGif || format.contentType.startsWith("video/") ? "media" : "image";
+        const err = new Error(`No se pudo subir el archivo ${label}. Revisa el tamaño y el formato del ${mediaLabel}.`);
+        err.statusCode = 500;
+        err.isUploadError = true;
+        throw err;
+    }
+
+    return supabaseAdmin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+}
 
 async function listSlides(req, res, next) {
     try {
@@ -30,22 +109,12 @@ async function createSlide(req, res, next) {
 
         if (files.pcImage) {
             const file = files.pcImage[0];
-            const processedBuffer = await processImage(file.buffer);
-            const name = `${Date.now()}-pc-${crypto.randomBytes(4).toString("hex")}.webp`;
-            const path = `carousel/${name}`;
-            const { data, error } = await supabaseAdmin.storage.from(BUCKET).upload(path, processedBuffer, { contentType: "image/webp" });
-            if (error) return res.status(500).json({ error: "Error uploading PC image: " + error.message });
-            pcImageUrl = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+            pcImageUrl = await uploadCarouselMedia(file, "pc");
         }
 
         if (files.mobileImage) {
             const file = files.mobileImage[0];
-            const processedBuffer = await processImage(file.buffer);
-            const name = `${Date.now()}-mobile-${crypto.randomBytes(4).toString("hex")}.webp`;
-            const path = `carousel/${name}`;
-            const { data, error } = await supabaseAdmin.storage.from(BUCKET).upload(path, processedBuffer, { contentType: "image/webp" });
-            if (error) return res.status(500).json({ error: "Error uploading mobile image: " + error.message });
-            mobileImageUrl = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+            mobileImageUrl = await uploadCarouselMedia(file, "mobile");
         }
 
         const { data, error } = await supabaseAdmin
@@ -65,6 +134,7 @@ async function createSlide(req, res, next) {
         if (error) return res.status(500).json({ error: error.message });
         return res.status(201).json({ slide: data });
     } catch (err) {
+        if (err.isUploadError) return res.status(err.statusCode || 500).json({ error: err.message });
         next(err);
     }
 }
@@ -90,30 +160,20 @@ async function updateSlide(req, res, next) {
 
         if (files.pcImage) {
             const file = files.pcImage[0];
-            const processedBuffer = await processImage(file.buffer);
-            const name = `${Date.now()}-pc-${crypto.randomBytes(4).toString("hex")}.webp`;
-            const path = `carousel/${name}`;
-
-            const { data, error } = await supabaseAdmin.storage.from(BUCKET).upload(path, processedBuffer, { contentType: "image/webp" });
-            if (error) return res.status(500).json({ error: "Error uploading PC image: " + error.message });
+            const pcImageUrl = await uploadCarouselMedia(file, "pc");
 
             // Delete old image
             await deleteImageFromStorage(current.pcImage);
-            patch.pcImage = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+            patch.pcImage = pcImageUrl;
         }
 
         if (files.mobileImage) {
             const file = files.mobileImage[0];
-            const processedBuffer = await processImage(file.buffer);
-            const name = `${Date.now()}-mobile-${crypto.randomBytes(4).toString("hex")}.webp`;
-            const path = `carousel/${name}`;
-
-            const { data, error } = await supabaseAdmin.storage.from(BUCKET).upload(path, processedBuffer, { contentType: "image/webp" });
-            if (error) return res.status(500).json({ error: "Error uploading mobile image: " + error.message });
+            const mobileImageUrl = await uploadCarouselMedia(file, "mobile");
 
             // Delete old image
             await deleteImageFromStorage(current.mobileImage);
-            patch.mobileImage = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+            patch.mobileImage = mobileImageUrl;
         }
 
         const { data: updated, error: updateErr } = await supabaseAdmin
@@ -126,6 +186,7 @@ async function updateSlide(req, res, next) {
         if (updateErr) return res.status(500).json({ error: updateErr.message });
         return res.json({ slide: updated });
     } catch (err) {
+        if (err.isUploadError) return res.status(err.statusCode || 500).json({ error: err.message });
         next(err);
     }
 }
