@@ -19,6 +19,8 @@ const carouselRoutes = require("./routes/carouselRoutes");
 const cookieConsentRoutes = require("./routes/cookieConsentRoutes");
 const adminUsersRoutes = require("./routes/adminUsersRoutes");
 const adminSettingsRoutes = require("./routes/adminSettingsRoutes");
+const designAssetsRoutes = require("./routes/designAssetsRoutes");
+const adminDesignAssetsRoutes = require("./routes/adminDesignAssetsRoutes");
 
 const app = express();
 
@@ -90,6 +92,8 @@ app.use("/api/carousel", carouselRoutes);
 app.use("/api", cookieConsentRoutes);
 app.use("/api/admin/users", adminUsersRoutes);
 app.use("/api/admin/settings", adminSettingsRoutes);
+app.use("/api/design-assets", designAssetsRoutes);
+app.use("/api/admin/design-assets", adminDesignAssetsRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);
