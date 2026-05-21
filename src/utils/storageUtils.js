@@ -17,8 +17,8 @@ function parsePublicStorageUrl(url) {
     return { bucket, path };
 }
 
-async function uploadProcessedImageToStorage({ bucket, folder, buffer }) {
-    const processedBuffer = await processImage(buffer);
+async function uploadProcessedImageToStorage({ bucket, folder, buffer, maxSizeInBytes }) {
+    const processedBuffer = await processImage(buffer, maxSizeInBytes);
     const name = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}.webp`;
     const cleanFolder = String(folder || "").replace(/^\/+|\/+$/g, "");
     const path = cleanFolder ? `${cleanFolder}/${name}` : name;
