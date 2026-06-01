@@ -340,12 +340,32 @@ async function postPublicRsvp(req, res, next) {
     // Evento existe (no owner)
     const { data: event, error: eventErr } = await supabaseAdmin
       .from("events")
-      .select("id, user_id, invitation_type")
+      .select("id, user_id, invitation_type, max_guests")
       .eq("id", eventId)
       .maybeSingle();
 
     if (eventErr) return res.status(500).json({ error: eventErr.message });
     if (!event) return res.status(404).json({ error: "Event not found" });
+
+    const invitationType = (event.invitation_type || "").toLowerCase();
+    const isEmailType = invitationType.startsWith("email");
+    const isUrlType = invitationType.startsWith("url");
+    const maxGuests = Number.isFinite(Number(event.max_guests)) ? Math.trunc(Number(event.max_guests)) : 0;
+    const incomingAttendingCount = guests.filter((g) => g?.attending === true).length;
+
+    if (isUrlType && maxGuests > 0 && incomingAttendingCount > 0) {
+      const { count: currentAttendingCount, error: countErr } = await supabaseAdmin
+        .from("guests")
+        .select("id", { count: "exact", head: true })
+        .eq("event_id", eventId)
+        .eq("attending", true);
+
+      if (countErr) return res.status(500).json({ error: countErr.message });
+
+      if ((currentAttendingCount || 0) + incomingAttendingCount > maxGuests) {
+        return res.status(409).json({ error: "El aforo de este evento está completo." });
+      }
+    }
 
     // Validar question_id pertenece al evento (anti-inyección)
     const { data: eventQuestions, error: qErr } = await supabaseAdmin
@@ -371,9 +391,6 @@ async function postPublicRsvp(req, res, next) {
       .single();
 
     if (groupCreateErr) return res.status(500).json({ error: groupCreateErr.message });
-
-    const invitationType = (event.invitation_type || "").toLowerCase();
-    const isEmailType = invitationType.startsWith("email");
 
     // Crear guests (batch)
     const guestsPayload = guests.map((g) => {
