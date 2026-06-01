@@ -3,6 +3,7 @@ const { sendTemplatedEmail } = require("../services/emailService");
 const { env } = require("../config/env");
 
 const BULK_EMAIL_LOCK_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutos
+const EMAIL_INVITATION_LIMIT_ERROR = "Ya se alcanzó el límite de invitaciones para este evento.";
 
 function isBulkLockActive(bulkEmailStartedAt) {
     if (!bulkEmailStartedAt) return false;
@@ -13,11 +14,36 @@ function isBulkLockActive(bulkEmailStartedAt) {
     return Date.now() - startedAtMs < BULK_EMAIL_LOCK_TIMEOUT_MS;
 }
 
+function toPositiveInt(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return 0;
+    return Math.max(0, Math.trunc(parsed));
+}
+
+function isQueuedEmailGuest(guest) {
+    return guest?.email_status === "queued";
+}
+
+function isProcessedEmailGuest(guest) {
+    return Boolean(guest?.email?.trim()) && guest?.email_status && guest.email_status !== "queued";
+}
+
+async function countProcessedEmailInvitations(eventId) {
+    const { data, error } = await supabaseAdmin
+        .from("guests")
+        .select("id, email, email_status")
+        .eq("event_id", eventId);
+
+    if (error) throw error;
+    return (data || []).filter(isProcessedEmailGuest).length;
+}
+
 async function consumeInvitationBalance(userId) {
     const { data: balance, error: balErr } = await supabaseAdmin
         .from("invitation_balances")
         .select("id, total_purchased, total_used")
         .eq("user_id", userId)
+        .eq("product_type", "all")
         .maybeSingle();
 
     if (balErr) {
@@ -215,6 +241,12 @@ async function sendGuestInvitation(req, res, next) {
         const productType = invitationType.split(":")[0];
 
         if (isFirstSend && productType === "email") {
+            const maxGuests = toPositiveInt(event.max_guests);
+            const processedCount = await countProcessedEmailInvitations(eventId);
+            if (maxGuests > 0 && processedCount >= maxGuests) {
+                return res.status(409).json({ error: EMAIL_INVITATION_LIMIT_ERROR });
+            }
+
             const balanceResult = await consumeInvitationBalance(userId);
 
             if (!balanceResult.success) {
@@ -293,15 +325,31 @@ async function sendAllGuestInvitations(req, res, next) {
 
         const invitationType = (event.invitation_type || "").toLowerCase();
         const productType = invitationType.split(":")[0];
+        const maxGuests = toPositiveInt(event.max_guests);
+        let remainingFirstSends = Number.POSITIVE_INFINITY;
+
+        if (productType === "email" && maxGuests > 0) {
+            const processedCount = await countProcessedEmailInvitations(eventId);
+            remainingFirstSends = Math.max(0, maxGuests - processedCount);
+        }
 
         // 3. Procesar envíos
         const results = [];
 
         for (const guest of guests) {
-            const isFirstTime = guest.email_status === "queued";
+            const isFirstTime = isQueuedEmailGuest(guest);
             const invitationUrl = `${env.FRONTEND_PUBLIC_URL}/invitation/${eventId}/${guest.id}`;
 
             if (productType === "email" && isFirstTime) {
+                if (remainingFirstSends <= 0) {
+                    results.push({
+                        guestId: guest.id,
+                        success: false,
+                        error: EMAIL_INVITATION_LIMIT_ERROR,
+                    });
+                    continue;
+                }
+
                 const balanceResult = await consumeInvitationBalance(userId);
 
                 if (!balanceResult.success) {
@@ -311,6 +359,10 @@ async function sendAllGuestInvitations(req, res, next) {
                         error: balanceResult.error,
                     });
                     continue;
+                }
+
+                if (Number.isFinite(remainingFirstSends)) {
+                    remainingFirstSends -= 1;
                 }
             }
 

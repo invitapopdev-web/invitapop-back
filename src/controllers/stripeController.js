@@ -5,29 +5,81 @@ const { supabaseAdmin } = require("../config/supabaseClient");
 
 const stripe = new Stripe(env.STRIPE_SECRET_KEY);
 
+function parsePositiveInt(value) {
+    const n = Number(value);
+    if (!Number.isInteger(n) || n <= 0) return null;
+    return n;
+}
+
+function parseTier(product) {
+    const metadata = product?.metadata || {};
+    const tierMin = parsePositiveInt(metadata.tier_min);
+    const rawTierMax = metadata.tier_max;
+    const tierMax =
+        rawTierMax === undefined || rawTierMax === null || String(rawTierMax).trim() === ""
+            ? null
+            : parsePositiveInt(rawTierMax);
+
+    if (!tierMin) return null;
+    if (rawTierMax !== undefined && rawTierMax !== null && String(rawTierMax).trim() !== "" && !tierMax) {
+        return null;
+    }
+    if (tierMax && tierMax < tierMin) return null;
+
+    return { tierMin, tierMax };
+}
+
+function formatStripeProduct(product) {
+    const price = product.default_price;
+    const tier = parseTier(product);
+
+    if (!price || typeof price === "string" || !price.id || !tier) return null;
+
+    return {
+        id: product.id,
+        name: product.name,
+        description: product.description,
+        image: product.images?.[0] || null,
+        priceId: price.id,
+        amount: price.unit_amount ? price.unit_amount / 100 : 0,
+        currency: price.currency || "eur",
+        tierMin: tier.tierMin,
+        tierMax: tier.tierMax,
+        metadata: product.metadata,
+        product,
+        price,
+    };
+}
+
+async function listInvitationTierProducts() {
+    const products = await stripe.products.list({
+        active: true,
+        limit: 100,
+        expand: ["data.default_price"],
+    });
+
+    return products.data
+        .filter((product) => {
+            const metadata = product.metadata || {};
+            return metadata.type === "all" && metadata.unit_type === "invitation";
+        })
+        .map(formatStripeProduct)
+        .filter(Boolean)
+        .sort((a, b) => a.tierMin - b.tierMin);
+}
+
+async function findProductForQuantity(quantity) {
+    const products = await listInvitationTierProducts();
+    return products.find((product) => {
+        if (quantity < product.tierMin) return false;
+        if (product.tierMax === null) return true;
+        return quantity <= product.tierMax;
+    }) || null;
+}
+
 const getProducts = async (req, res) => {
     try {
-        const products = await stripe.products.list({
-            active: true,
-            expand: ["data.default_price"],
-        });
-
-        // Filtrar solo productos con metadata type "all"
-        const formattedProducts = products.data
-            .filter((product) => product.metadata?.type === "all")
-            .map((product) => {
-                const price = product.default_price;
-                return {
-                    id: product.id,
-                    name: product.name,
-                    description: product.description,
-                    image: product.images?.[0] || null,
-                    priceId: price ? price.id : null,
-                    amount: price ? price.unit_amount / 100 : 0,
-                    currency: price ? price.currency : "eur",
-                    metadata: product.metadata,
-                };
-            });
+        const formattedProducts = (await listInvitationTierProducts()).map(({ product, price, ...item }) => item);
 
         return res.json(formattedProducts);
     } catch (error) {
@@ -38,22 +90,52 @@ const getProducts = async (req, res) => {
 
 const createCheckoutSession = async (req, res) => {
     try {
-        const { priceId, eventId, targetMaxGuests, publishAfterPayment } = req.body;
+        const { priceId, quantity: rawQuantity, eventId, targetMaxGuests, publishAfterPayment } = req.body;
         const userId = req.user.id;
 
-        if (!priceId) return res.status(400).json({ error: "Missing priceId" });
+        const quantity = parsePositiveInt(rawQuantity);
+        let selectedPriceId = priceId || null;
+        let product = null;
+        let tierMin = "";
+        let tierMax = "";
+        let purchasedInvitations = quantity;
 
-        const price = await stripe.prices.retrieve(priceId, { expand: ["product"] });
-        const product = price.product;
+        if (quantity) {
+            const selected = await findProductForQuantity(quantity);
+            if (!selected) {
+                return res.status(400).json({
+                    error: "No hay un producto de Stripe configurado para esa cantidad de invitaciones",
+                });
+            }
+
+            selectedPriceId = selected.priceId;
+            product = selected.product;
+            tierMin = String(selected.tierMin);
+            tierMax = selected.tierMax === null ? "" : String(selected.tierMax);
+        } else {
+            // Fallback temporal para el front actual basado en packs fijos.
+            if (!priceId) return res.status(400).json({ error: "Missing quantity" });
+
+            const price = await stripe.prices.retrieve(priceId, { expand: ["product"] });
+            product = price.product;
+            purchasedInvitations = parsePositiveInt(product?.metadata?.invitations);
+            if (!purchasedInvitations) {
+                return res.status(400).json({ error: "Missing quantity" });
+            }
+            tierMin = product?.metadata?.tier_min ? String(product.metadata.tier_min) : "";
+            tierMax = product?.metadata?.tier_max ? String(product.metadata.tier_max) : "";
+        }
 
         const metadata = {
             userId: String(userId || ""),
-            productType: String(product?.metadata?.type || "standard"),
-            invitations: String(product?.metadata?.invitations || "0"),
+            productType: "all",
+            invitations: String(purchasedInvitations),
             packName: String(product?.name || ""),
             eventId: eventId ? String(eventId) : "",
             targetMaxGuests: targetMaxGuests ? String(targetMaxGuests) : "",
             publishAfterPayment: publishAfterPayment ? "true" : "false",
+            tierMin,
+            tierMax,
         };
 
         const successUrl = `${env.FRONTEND_PUBLIC_URL}/dashboard/events/${eventId}?payment=success&session_id={CHECKOUT_SESSION_ID}`;
@@ -62,7 +144,7 @@ const createCheckoutSession = async (req, res) => {
         // 1) Crear la session primero
         const session = await stripe.checkout.sessions.create({
             payment_method_types: ["card"],
-            line_items: [{ price: priceId, quantity: 1 }],
+            line_items: [{ price: selectedPriceId, quantity: purchasedInvitations }],
             mode: "payment",
             success_url: successUrl,
             cancel_url: cancelUrl,
