@@ -56,6 +56,10 @@ async function uploadTemplateImage(req, res, next) {
       buffer: file.buffer,
     });
     const url = uploaded.url;
+    // Editors upload first, then commit the complete design with PATCH.
+    if (req.body.persist === "false") {
+      return res.json({ ok: true, url, path: uploaded.path });
+    }
     const patch = { updated_at: new Date().toISOString() };
 
     if (MAP[type].column) {

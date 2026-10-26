@@ -1,9 +1,6 @@
 // controllers/templatesController.js
 const { supabaseAdmin } = require("../config/supabaseClient");
-const {
-  deleteImageFromStorage,
-  parsePublicStorageUrl,
-} = require("../utils/storageUtils");
+
 
 
 function isPlainObject(v) {
@@ -91,34 +88,6 @@ function parseCsvUuids(value) {
 
 function badRequest(res, msg) {
   return res.status(400).json({ error: msg });
-}
-
-function collectTemplateStorageUrls(value, templateId, out = new Set()) {
-  if (!value) return out;
-
-  if (typeof value === "string") {
-    const parsed = parsePublicStorageUrl(value);
-    if (parsed?.path?.startsWith(`templates/${templateId}/`)) out.add(value);
-    return out;
-  }
-
-  if (Array.isArray(value)) {
-    value.forEach((item) => collectTemplateStorageUrls(item, templateId, out));
-    return out;
-  }
-
-  if (typeof value === "object") {
-    Object.values(value).forEach((item) => collectTemplateStorageUrls(item, templateId, out));
-  }
-
-  return out;
-}
-
-async function deleteRemovedTemplateImages({ before, after, templateId }) {
-  const beforeUrls = collectTemplateStorageUrls(before, templateId);
-  const afterUrls = collectTemplateStorageUrls(after, templateId);
-  const removedUrls = Array.from(beforeUrls).filter((url) => !afterUrls.has(url));
-  await Promise.all(removedUrls.map((url) => deleteImageFromStorage(url)));
 }
 
 // ---------- Controllers ----------
@@ -283,13 +252,7 @@ async function patchTemplate(req, res, next) {
       .single();
 
     if (error) return res.status(500).json({ error: error.message });
-    if (patchPayload.design_json !== undefined) {
-      await deleteRemovedTemplateImages({
-        before: safeJsonParse(current.design_json || "{}").value || {},
-        after: safeJsonParse(data.design_json || "{}").value || {},
-        templateId: id,
-      });
-    }
+    // Template assets may still be referenced by existing events. Keep them.
 
     return res.json({ template: data });
   } catch (err) {

@@ -9,12 +9,12 @@ const CAROUSEL_MEDIA_LIMITS = {
     pc: {
         image: 5 * MB,
         gif: 5 * MB,
-        video: 4.5 * MB,
+        video: 5 * MB,
     },
     mobile: {
         image: 5 * MB,
         gif: 4 * MB,
-        video: 4 * MB,
+        video: 5 * MB,
     },
 };
 

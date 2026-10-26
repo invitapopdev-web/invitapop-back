@@ -267,6 +267,69 @@
       "foreign_keys": [],
       "unique": []
     },
+    "design_assets": {
+      "primary_key": [
+        "id"
+      ],
+      "columns": {
+        "id": {
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "unique": false
+        },
+        "created_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "unique": false
+        },
+        "updated_at": {
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "unique": false
+        },
+        "type": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "name": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "image_url": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "unique": false
+        },
+        "storage_path": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "unique": false
+        },
+        "sort_order": {
+          "type": "integer",
+          "nullable": false,
+          "default": "0",
+          "unique": false
+        },
+        "is_active": {
+          "type": "boolean",
+          "nullable": false,
+          "default": "true",
+          "unique": false
+        }
+      },
+      "foreign_keys": [],
+      "unique": []
+    },
     "events": {
       "primary_key": [
         "id"

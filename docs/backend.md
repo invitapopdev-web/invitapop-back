@@ -129,3 +129,12 @@ invitapop-back/
 - **Refactorización**: La lógica de RSVP en `rsvpController.js` es muy extensa (>27k caracteres), se recomienda dividir en servicios menores.
 - **Seguridad**: Configurar límites de tasa (rate limiting) para endpoints de auth.
 - **Validación**: Implementar una librería de esquemas (ej: Zod o Joi) para validaciones de cuerpo de request más robustas.
+
+
+## Manual editor saves
+
+`POST /api/templates/:id/images` accepts multipart `persist=false`: uploads and returns `{ ok, url, path }` without updating the template or deleting its previous image. Omitting it preserves the legacy behavior. Editors commit name, activation, thumbnail and design together through the existing PATCH after uploading. Template writes require admin.
+
+`POST /api/events/:id/images` checks event ownership and never deletes `oldUrl`. Event PATCH still removes unused event-owned images after saving. Template PATCH retains old assets because existing events can reference them.
+
+Individual image failures do not prevent a JSON save: the client retains the previous URL (or omits a new image), reports the failure and keeps the file locally for retry. Uploads that succeeded before a failed PATCH are reused; ambiguous network failures must not trigger file deletion. Categories remain a separate explicit save. No automatic orphan cleanup is introduced.
